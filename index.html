@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebBlender</title>
+    
+    <!-- Ruta apuntando a la carpeta styles -->
+    <link rel="stylesheet" href="styles/main.css">
+
+    <!-- Import Map para Three.js y sus controles -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+            "three/examples/jsm/controls/TransformControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/TransformControls.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <header id="top-bar">
+            <span class="logo">WebBlender</span>
+            <select id="mode-select">
+                <option value="OBJECT">Object Mode</option>
+                <option value="EDIT">Edit Mode</option>
+            </select>
+            <div id="edit-select-modes" class="hidden">
+                <button id="btn-mode-vertex" class="submode-btn active">Vertex</button>
+                <button id="btn-mode-edge" class="submode-btn">Edge</button>
+                <button id="btn-mode-face" class="submode-btn">Face</button>
+            </div>
+            <button id="btn-add">+ Add</button>
+        </header>
+
+        <main id="main-container">
+            <div id="viewport-container"></div>
+            
+            <aside id="sidebar">
+                <div class="panel-section">
+                    <div class="panel-title">OUTLINER</div>
+                    <div id="outliner-list"></div>
+                </div>
+                
+                <div class="panel-section">
+                    <div class="panel-title">PROPERTIES</div>
+                    <div id="properties-panel">
+                        <p class="section-subtitle">Transform</p>
+                        <div class="prop-group">
+                            <label>Location</label>
+                            <div class="input-trio">
+                                <input type="number" id="prop-pos-x" step="0.1" placeholder="X">
+                                <input type="number" id="prop-pos-y" step="0.1" placeholder="Y">
+                                <input type="number" id="prop-pos-z" step="0.1" placeholder="Z">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
