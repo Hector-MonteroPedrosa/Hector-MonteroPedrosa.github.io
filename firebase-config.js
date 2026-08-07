@@ -29,12 +29,13 @@
    Con eso ya está: guarda este archivo y recarga la página.
    ========================================================================= */
 
-   const firebaseConfig = {
-    apiKey: "AIzaSyBfQAERsXGC80W3ZYXIYn-RdDWI5mQvw54",
-    authDomain: "polyguess1.firebaseapp.com",
-    projectId: "polyguess1",
-    storageBucket: "polyguess1.firebasestorage.app",
-    messagingSenderId: "3630880695",
-    appId: "1:3630880695:web:b86039b51d24b242647a32",
-    measurementId: "G-Z4V85LHQFJ"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyBfQAERsXGC80W3ZYXiYn-RdDWlSMQvw54",
+  authDomain: "polyguess1.firebaseapp.com",
+  databaseURL: "https://polyguess1-default-rtdb.firebaseio.com/",
+  projectId: "polyguess1",
+  storageBucket: "polyguess1.firebasestorage.app",
+  messagingSenderId: "3630880695",
+  appId: "1:3630880695:web:b86039b51d24b242647a32",
+  measurementId: "G-Z4V85LHQFJ"
+};
