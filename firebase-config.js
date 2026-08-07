@@ -29,7 +29,7 @@
    Con eso ya está: guarda este archivo y recarga la página.
    ========================================================================= */
 
-  const firebaseConfig = {
+  export const firebaseConfig = {
     apiKey: "AIzaSyBfQAERsXGC80W3ZYXIYn-RdDWI5mQvw54",
     authDomain: "polyguess1.firebaseapp.com",
     projectId: "polyguess1",
