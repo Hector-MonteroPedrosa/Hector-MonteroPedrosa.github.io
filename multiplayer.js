@@ -1,0 +1,219 @@
+/* =========================================================================
+   MULTIPLAYER.JS
+   Salas en tiempo real sobre Firebase Realtime Database (gratis).
+   Se carga DESPUÉS de script.js: usa sus funciones globales snapshotState()
+   y restoreState(), y le asigna los "ganchos" onSceneChanged /
+   onModalOrEditModeEnded que script.js llama cuando algo cambia.
+
+   Estrategia de sincronización: "última escritura gana" sobre el estado
+   COMPLETO de la escena (el mismo formato que ya usa el Deshacer/Rehacer
+   local). No es edición concurrente tipo Google Docs: si dos personas
+   tocan geometría exactamente a la vez, gana la última. Para el uso
+   previsto (un "modelador" activo por ronda mientras el resto mira/chatea,
+   como en un pinturillo) esto es exactamente lo que hace falta, no una
+   limitación real.
+   ========================================================================= */
+
+let fbApp = null, fbDb = null;
+let currentRoomId = null;
+let myUserId = 'u_' + Math.random().toString(36).slice(2, 10);
+let myName = 'Jugador' + Math.floor(100 + Math.random() * 900);
+let applyingRemote = false;
+let deferredRemoteSnapshot = null;
+let lastBroadcastAt = 0;
+let broadcastPending = false;
+const BROADCAST_MIN_INTERVAL_MS = 120;
+
+function firebaseIsConfigured() {
+  return typeof firebaseConfig === 'object' && firebaseConfig &&
+    firebaseConfig.databaseURL &&
+    !String(firebaseConfig.databaseURL).includes('TU_PROYECTO') &&
+    typeof firebase !== 'undefined';
+}
+
+function initFirebase() {
+  if (!firebaseIsConfigured()) return false;
+  if (!fbApp) {
+    try {
+      fbApp = firebase.initializeApp(firebaseConfig);
+      fbDb = firebase.database();
+    } catch (e) {
+      console.error('Error inicializando Firebase:', e);
+      return false;
+    }
+  }
+  return true;
+}
+
+function makeRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O/1/I para evitar confusiones
+  let s = '';
+  for (let i = 0; i < 5; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* -------------------------------------------------------------------------
+   LOBBY
+   ------------------------------------------------------------------------- */
+function showLobby() {
+  document.getElementById('lobby-overlay').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  const ready = firebaseIsConfigured();
+  document.getElementById('lobby-error').textContent = ready ? '' :
+    'Multijugador no configurado todavía (falta editar firebase-config.js con tus credenciales gratis de Firebase). Puedes seguir en modo local mientras tanto.';
+  document.getElementById('lobby-create-btn').disabled = !ready;
+  document.getElementById('lobby-join-btn').disabled = !ready;
+  document.getElementById('lobby-code-input').disabled = !ready;
+}
+function enterEditor() {
+  document.getElementById('lobby-overlay').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+}
+
+document.getElementById('lobby-solo-btn').addEventListener('click', enterEditor);
+
+document.getElementById('lobby-create-btn').addEventListener('click', async () => {
+  if (!initFirebase()) return;
+  myName = document.getElementById('lobby-name').value.trim() || myName;
+  setLobbyBusy(true);
+  try {
+    await joinOrCreateRoom(makeRoomCode(), true);
+  } catch (e) {
+    document.getElementById('lobby-error').textContent = 'No se pudo crear la sala: ' + e.message;
+  }
+  setLobbyBusy(false);
+});
+document.getElementById('lobby-join-btn').addEventListener('click', async () => {
+  if (!initFirebase()) return;
+  const code = document.getElementById('lobby-code-input').value.trim().toUpperCase();
+  if (!code) { document.getElementById('lobby-error').textContent = 'Escribe un código de sala.'; return; }
+  myName = document.getElementById('lobby-name').value.trim() || myName;
+  setLobbyBusy(true);
+  try {
+    await joinOrCreateRoom(code, false);
+  } catch (e) {
+    document.getElementById('lobby-error').textContent = 'No se pudo unir a la sala: ' + e.message;
+  }
+  setLobbyBusy(false);
+});
+function setLobbyBusy(b) {
+  ['lobby-create-btn', 'lobby-join-btn'].forEach(id => document.getElementById(id).disabled = b);
+}
+
+/* -------------------------------------------------------------------------
+   CONEXIÓN A LA SALA
+   ------------------------------------------------------------------------- */
+async function joinOrCreateRoom(code, isCreator) {
+  const roomRef = fbDb.ref('rooms/' + code);
+
+  if (isCreator) {
+    await roomRef.child('scene').set({ data: JSON.stringify(snapshotState()), sender: myUserId, ts: Date.now() });
+  } else {
+    const snap = await roomRef.child('scene').get();
+    if (!snap.exists()) throw new Error('esa sala no existe, comprueba el código');
+  }
+
+  currentRoomId = code;
+
+  const presenceRef = roomRef.child('presence/' + myUserId);
+  presenceRef.set({ name: myName, ts: Date.now() });
+  presenceRef.onDisconnect().remove();
+  roomRef.child('presence').on('value', snap => renderPresence(snap.val() || {}));
+
+  roomRef.child('scene').on('value', snap => {
+    const v = snap.val();
+    if (!v || v.sender === myUserId) return;
+    tryApplyRemote(JSON.parse(v.data));
+  });
+
+  document.getElementById('chat-messages').innerHTML = '';
+  roomRef.child('chat').limitToLast(100).on('child_added', snap => appendChatMessage(snap.val()));
+
+  onSceneChanged = scheduleBroadcast;
+  onModalOrEditModeEnded = flushDeferredRemote;
+
+  document.getElementById('room-code-label').textContent = code;
+  document.getElementById('room-badge').style.display = 'flex';
+  enterEditor();
+  setStatus('Sala ' + code + (isCreator ? ' creada' : ' — conectado'));
+}
+
+function tryApplyRemote(snapshotData) {
+  if (modal.active || editMode) {
+    deferredRemoteSnapshot = snapshotData; // nos quedamos solo con la más reciente
+    return;
+  }
+  applyingRemote = true;
+  try { restoreState(snapshotData); } finally { applyingRemote = false; }
+}
+function flushDeferredRemote() {
+  if (deferredRemoteSnapshot) {
+    const s = deferredRemoteSnapshot;
+    deferredRemoteSnapshot = null;
+    tryApplyRemote(s);
+  }
+}
+
+function scheduleBroadcast() {
+  if (applyingRemote || !currentRoomId) return;
+  const now = Date.now();
+  if (now - lastBroadcastAt >= BROADCAST_MIN_INTERVAL_MS) {
+    lastBroadcastAt = now;
+    sendBroadcastNow();
+  } else if (!broadcastPending) {
+    broadcastPending = true;
+    setTimeout(() => {
+      broadcastPending = false;
+      lastBroadcastAt = Date.now();
+      sendBroadcastNow();
+    }, BROADCAST_MIN_INTERVAL_MS);
+  }
+}
+function sendBroadcastNow() {
+  if (!currentRoomId) return;
+  fbDb.ref('rooms/' + currentRoomId + '/scene').set({
+    data: JSON.stringify(snapshotState()), sender: myUserId, ts: Date.now()
+  });
+}
+
+/* -------------------------------------------------------------------------
+   PRESENCIA
+   ------------------------------------------------------------------------- */
+function renderPresence(map) {
+  const el = document.getElementById('presence-list');
+  el.innerHTML = '';
+  Object.values(map).forEach(p => {
+    const span = document.createElement('span');
+    span.className = 'presence-chip';
+    span.textContent = p.name;
+    el.appendChild(span);
+  });
+}
+
+/* -------------------------------------------------------------------------
+   CHAT (base para el futuro modo "adivina" tipo pinturillo)
+   ------------------------------------------------------------------------- */
+function appendChatMessage(msg) {
+  const el = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.innerHTML = `<b>${escapeHtml(msg.name)}:</b> ${escapeHtml(msg.text)}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+function sendChatMessage() {
+  const inp = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text || !currentRoomId) return;
+  fbDb.ref('rooms/' + currentRoomId + '/chat').push({ name: myName, text, ts: Date.now() });
+  inp.value = '';
+}
+document.getElementById('chat-send').addEventListener('click', sendChatMessage);
+document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
+document.getElementById('chat-toggle-btn').addEventListener('click', () => {
+  document.getElementById('chat-panel').classList.toggle('open');
+});
+
+showLobby();

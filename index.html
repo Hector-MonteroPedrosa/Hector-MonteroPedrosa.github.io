@@ -1,67 +1,156 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebBlender</title>
-    
-    <!-- Ruta apuntando a la carpeta styles -->
-    <link rel="stylesheet" href="styles/main.css">
-
-    <!-- Import Map para Three.js y sus controles -->
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js",
-            "three/examples/jsm/controls/TransformControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/TransformControls.js"
-        }
-    }
-    </script>
+<meta charset="UTF-8">
+<title>WebBlender – Modelado 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="app">
-        <header id="top-bar">
-            <span class="logo">WebBlender</span>
-            <select id="mode-select">
-                <option value="OBJECT">Object Mode</option>
-                <option value="EDIT">Edit Mode</option>
-            </select>
-            <div id="edit-select-modes" class="hidden">
-                <button id="btn-mode-vertex" class="submode-btn active">Vertex</button>
-                <button id="btn-mode-edge" class="submode-btn">Edge</button>
-                <button id="btn-mode-face" class="submode-btn">Face</button>
-            </div>
-            <button id="btn-add">+ Add</button>
-        </header>
 
-        <main id="main-container">
-            <div id="viewport-container"></div>
-            
-            <aside id="sidebar">
-                <div class="panel-section">
-                    <div class="panel-title">OUTLINER</div>
-                    <div id="outliner-list"></div>
-                </div>
-                
-                <div class="panel-section">
-                    <div class="panel-title">PROPERTIES</div>
-                    <div id="properties-panel">
-                        <p class="section-subtitle">Transform</p>
-                        <div class="prop-group">
-                            <label>Location</label>
-                            <div class="input-trio">
-                                <input type="number" id="prop-pos-x" step="0.1" placeholder="X">
-                                <input type="number" id="prop-pos-y" step="0.1" placeholder="Y">
-                                <input type="number" id="prop-pos-z" step="0.1" placeholder="Z">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </aside>
-        </main>
+<!-- LOBBY: elegir sala o modo local, antes de entrar al editor -->
+<div id="lobby-overlay" class="lobby-overlay">
+  <div class="lobby-card">
+    <h1>◆ WebBlender<span class="lobby-sub">Modelado 3D multijugador</span></h1>
+    <input id="lobby-name" type="text" placeholder="Tu nombre" maxlength="20">
+    <div class="lobby-row">
+      <input id="lobby-code-input" type="text" placeholder="CÓDIGO DE SALA" maxlength="8">
+      <button id="lobby-join-btn" class="lobby-btn">Unirse</button>
+    </div>
+    <button id="lobby-create-btn" class="lobby-btn primary">Crear sala nueva</button>
+    <button id="lobby-solo-btn" class="lobby-btn ghost">Entrar en modo local (sin sala)</button>
+    <p id="lobby-error" class="lobby-error"></p>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div class="logo">◆ WebBlender</div>
+    <button class="menu-btn" id="btn-add-menu">Añadir ▾</button>
+    <select class="mode-select" id="mode-select">
+      <option value="object">Object Mode</option>
+      <option value="edit">Edit Mode</option>
+    </select>
+    <div id="edit-submode">
+      <button class="sub-btn active" data-submode="vertex" title="Vértices (1)">V</button>
+      <button class="sub-btn" data-submode="edge" title="Aristas (2)">E</button>
+      <button class="sub-btn" data-submode="face" title="Caras (3)">F</button>
+    </div>
+    <div class="top-sep"></div>
+    <div id="shading-icons">
+      <button id="shade-solid" class="active" title="Sólido">◐</button>
+      <button id="shade-wire" title="Superponer wireframe (Z)">▦</button>
+    </div>
+    <div class="top-sep"></div>
+    <button class="menu-btn" id="btn-shade-smooth">Suavizar</button>
+    <button class="menu-btn" id="btn-shade-flat">Plano</button>
+
+    <div id="undo-redo">
+      <button id="btn-undo" title="Deshacer (Ctrl+Z)">↶</button>
+      <button id="btn-redo" title="Rehacer (Ctrl+Shift+Z)">↷</button>
     </div>
 
-    <script type="module" src="js/main.js"></script>
+    <div id="room-badge">
+      <span class="room-pill">🔗 <b id="room-code-label"></b></span>
+      <span id="presence-list" class="presence-list"></span>
+      <button id="chat-toggle-btn" class="toggle-btn" title="Chat de la sala">💬</button>
+    </div>
+
+    <div class="dropdown" id="add-dropdown">
+      <div class="dd-item" data-add="cube">▣ Cubo</div>
+      <div class="dd-item" data-add="sphere">◎ Esfera UV</div>
+      <div class="dd-item" data-add="cylinder">⬤ Cilindro</div>
+      <div class="dd-item" data-add="cone">▲ Cono</div>
+      <div class="dd-item" data-add="torus">◯ Toroide</div>
+      <div class="dd-item" data-add="plane">▭ Plano</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="toolbar">
+      <button class="tool-btn active" data-tool="select" title="Seleccionar">⛶</button>
+      <button class="tool-btn" data-tool="move" title="Mover (G)">✛</button>
+      <button class="tool-btn" data-tool="rotate" title="Rotar (R)">↻</button>
+      <button class="tool-btn" data-tool="scale" title="Escalar (S)">⤢</button>
+    </div>
+
+    <div id="viewport-wrap">
+      <canvas id="three-canvas"></canvas>
+      <canvas id="gizmo-canvas" width="90" height="90"></canvas>
+      <div id="viewport-overlay-top"></div>
+      <div id="modal-hint"></div>
+
+      <div id="npanel">
+        <h3>Item</h3>
+        <div class="field-group">
+          <div class="dim-label">Ubicación</div>
+          <div class="field-row"><label class="x">X</label><input type="number" step="0.1" id="n-px"></div>
+          <div class="field-row"><label class="y">Y</label><input type="number" step="0.1" id="n-py"></div>
+          <div class="field-row"><label class="z">Z</label><input type="number" step="0.1" id="n-pz"></div>
+        </div>
+        <div class="field-group">
+          <div class="dim-label">Rotación (°)</div>
+          <div class="field-row"><label class="x">X</label><input type="number" step="1" id="n-rx"></div>
+          <div class="field-row"><label class="y">Y</label><input type="number" step="1" id="n-ry"></div>
+          <div class="field-row"><label class="z">Z</label><input type="number" step="1" id="n-rz"></div>
+        </div>
+        <div class="field-group">
+          <div class="dim-label">Escala</div>
+          <div class="field-row"><label class="x">X</label><input type="number" step="0.1" id="n-sx"></div>
+          <div class="field-row"><label class="y">Y</label><input type="number" step="0.1" id="n-sy"></div>
+          <div class="field-row"><label class="z">Z</label><input type="number" step="0.1" id="n-sz"></div>
+        </div>
+        <div class="field-group">
+          <div class="dim-label">Dimensiones</div>
+          <div id="n-dims" style="color:#bbb;">–</div>
+        </div>
+      </div>
+
+      <div id="chat-panel" class="chat-panel">
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" type="text" placeholder="Mensaje / adivina...">
+          <button id="chat-send">➤</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="rightpanel">
+      <div id="outliner">
+        <div class="ol-title">Outliner</div>
+        <div id="ol-list"></div>
+      </div>
+      <div id="properties">
+        <div id="prop-tabs">
+          <button class="ptab active" data-ptab="object" title="Objeto">◈</button>
+          <button class="ptab" data-ptab="modifiers" title="Modificadores">🔧</button>
+          <button class="ptab" data-ptab="material" title="Material">🎨</button>
+        </div>
+        <div id="prop-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <span><b>MMB</b> Orbitar</span>
+    <span><b>Shift+MMB</b> Desplazar</span>
+    <span><b>Scroll</b> Zoom</span>
+    <span><b>G/R/S/E</b> Mover/Rotar/Escalar/Extruir</span>
+    <span><b>Shift</b> = preciso</span>
+    <span><b>Tab</b> Editar/Objeto</span>
+    <span><b>Ctrl+Z</b> Deshacer</span>
+    <span id="status-msg"></span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+<script src="script.js"></script>
+<script src="firebase-config.js"></script>
+<script src="multiplayer.js"></script>
 </body>
 </html>
