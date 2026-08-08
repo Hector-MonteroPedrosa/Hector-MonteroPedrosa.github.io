@@ -479,6 +479,69 @@ function buildEdgeList(data){
 }
 
 /* -------------------------------------------------------------------------
+   LOOP CUT (Ctrl+R): sólo funciona sobre caras cuadrangulares (como en Blender).
+   Camina el "anillo" de quads cruzando siempre por la arista opuesta, en las
+   dos direcciones desde la cara bajo el ratón, e inserta un vértice medio
+   compartido en cada arista cruzada para partir cada quad en dos.
+   ------------------------------------------------------------------------- */
+function buildEdgeFaceMap(data){
+  const map=new Map(); // edgeKey -> [{faceIndex, edgeLocal}]
+  data.faces.forEach((f,fi)=>{
+    const k=f.length;
+    for(let i=0;i<k;i++){
+      const a=f[i], b=f[(i+1)%k];
+      const key=edgeKey(a,b);
+      if(!map.has(key)) map.set(key,[]);
+      map.get(key).push({faceIndex:fi, edgeLocal:i});
+    }
+  });
+  return map;
+}
+function computeLoopRing(data, faceIndex, edgeLocal){
+  const face0 = data.faces[faceIndex];
+  if(!face0 || face0.length!==4) return [];
+  const edgeFaceMap = buildEdgeFaceMap(data);
+  const visited = new Set();
+  function stepChain(startFace, startEdgeLocal, out){
+    let curFace=startFace, curEdge=startEdgeLocal;
+    while(curFace!=null && !visited.has(curFace)){
+      const face=data.faces[curFace];
+      if(!face || face.length!==4) break;
+      visited.add(curFace);
+      const outEdge=(curEdge+2)%4;
+      out.push({faceIndex:curFace, edgeA:curEdge, edgeB:outEdge});
+      const a=face[outEdge], b=face[(outEdge+1)%4];
+      const cands=edgeFaceMap.get(edgeKey(a,b))||[];
+      const nb=cands.find(c=>c.faceIndex!==curFace);
+      if(!nb){ curFace=null; break; }
+      curFace=nb.faceIndex; curEdge=nb.edgeLocal;
+    }
+  }
+  const fwd=[];
+  stepChain(faceIndex, edgeLocal, fwd);
+  const a0=face0[edgeLocal], b0=face0[(edgeLocal+1)%4];
+  const cand0=(edgeFaceMap.get(edgeKey(a0,b0))||[]).find(c=>c.faceIndex!==faceIndex);
+  const bwd=[];
+  if(cand0) stepChain(cand0.faceIndex, cand0.edgeLocal, bwd);
+  return bwd.slice().reverse().concat(fwd);
+}
+function getOrCreateMid(data, midCache, a, b){
+  const key=edgeKey(a,b);
+  if(midCache.has(key)) return midCache.get(key);
+  const pa=data.vertices[a], pb=data.vertices[b];
+  const idx=data.vertices.length;
+  data.vertices.push([(pa[0]+pb[0])/2,(pa[1]+pb[1])/2,(pa[2]+pb[2])/2]);
+  midCache.set(key, idx);
+  return idx;
+}
+function splitQuad(face, edgeALocal, midA, midB){
+  const edgeBLocal=(edgeALocal+2)%4;
+  const face1=[midA, face[(edgeALocal+1)%4], face[edgeBLocal], midB];
+  const face2=[midB, face[(edgeBLocal+1)%4], face[edgeALocal], midA];
+  return [face1, face2];
+}
+
+/* -------------------------------------------------------------------------
    5. ESCENA THREE.JS
    ------------------------------------------------------------------------- */
 const canvas = document.getElementById('three-canvas');
@@ -546,9 +609,10 @@ window.addEventListener('resize', resize);
    ------------------------------------------------------------------------- */
 let objects = [];
 let selectedObject = null;
-/* Ganchos opcionales para multiplayer.js (permanecen null y no hacen nada si no hay sala activa) */
+/* Ganchos opcionales para multiplayer.js (permanecen null/true y no hacen nada si no hay sala activa) */
 let onSceneChanged = null;        // se llama tras cualquier cambio de geometría/transform
-let onModalOrEditModeEnded = null; // se llama al soltar un G/R/S/E o salir de Edit Mode
+let onModalOrEditModeEnded = null; // se llama al soltar un G/R/S/E/I o salir de Edit Mode
+let canEdit = true;                // false = modo espectador (partida en marcha y no es tu turno)
 let objCounter = {cube:0,sphere:0,cylinder:0,cone:0,torus:0,plane:0};
 const PALETTE = [0xe0724a,0x5aa9d6,0x8fc75a,0xe0c34a,0xb17adf,0xd65a8f,0x5ad6c0,0xd6a95a];
 let paletteIdx=0;
@@ -618,7 +682,8 @@ class SceneObject{
   }
 }
 
-function addObject(kind, {record=true}={}){
+function addObject(kind, {record=true, force=false}={}){
+  if(!canEdit && !force) return null;
   let data;
   switch(kind){
     case 'cube': data=Primitives.cube(2,2,2); break;
@@ -641,13 +706,23 @@ function addObject(kind, {record=true}={}){
 }
 
 function deleteObject(obj){
-  if(!obj) return;
+  if(!obj || !canEdit) return;
   pushUndo();
   objects = objects.filter(o=>o!==obj);
   obj.dispose();
   if(selectedObject===obj) selectObject(objects[0]||null);
   refreshOutliner();
   if(onSceneChanged) onSceneChanged();
+}
+
+/* Usado por game.js: borra todo y deja un cubo limpio para que el modelador empiece la ronda */
+function resetSceneForNewRound(){
+  objects.forEach(o=>o.dispose());
+  objects=[];
+  selectObject(null);
+  undoStack=[]; redoStack=[];
+  if(typeof updateUndoButtons==='function') updateUndoButtons();
+  addObject('cube', {record:false, force:true});
 }
 
 function selectObject(obj){
@@ -779,6 +854,135 @@ function handleViewportClick(e){
 }
 
 /* -------------------------------------------------------------------------
+   LOOP CUT interactivo (Ctrl+R): vista previa en vivo sobre la arista más
+   cercana al ratón, clic izquierdo para cortar en el centro, clic
+   derecho/Esc para cancelar. Sólo funciona sobre caras cuadrangulares.
+   ------------------------------------------------------------------------- */
+let loopCutMode=false;
+let loopCutPreviewLine=null;
+let loopCutRingSteps=null;
+
+function enterLoopCutMode(){
+  if(!editMode || !selectedObject || !canEdit) return;
+  loopCutMode=true;
+  setStatus('Loop Cut: mueve el ratón sobre una arista — clic para cortar, clic-der./Esc para cancelar');
+}
+function exitLoopCutMode(){
+  loopCutMode=false;
+  clearLoopCutPreview();
+  loopCutRingSteps=null;
+  setStatus('');
+  if(onModalOrEditModeEnded) onModalOrEditModeEnded();
+}
+function clearLoopCutPreview(){
+  if(loopCutPreviewLine){
+    scene.remove(loopCutPreviewLine);
+    loopCutPreviewLine.geometry.dispose();
+    loopCutPreviewLine.material.dispose();
+    loopCutPreviewLine=null;
+  }
+}
+function updateLoopCutPreview(e){
+  if(!loopCutMode || !selectedObject) return;
+  const ndc=ndcFromEvent(e);
+  raycaster.setFromCamera(ndc, activeCamera());
+  const hits=raycaster.intersectObject(selectedObject.mesh);
+  if(!hits.length){ clearLoopCutPreview(); loopCutRingSteps=null; return; }
+  const triToFace=selectedObject.mesh.geometry.userData.triToFace;
+  const fi = triToFace ? triToFace[hits[0].faceIndex] : hits[0].faceIndex;
+  const data=selectedObject.baseMesh;
+  const face=data.faces[fi];
+  if(!face || face.length!==4){ clearLoopCutPreview(); loopCutRingSteps=null; return; } // sólo quads
+  const mx=e.clientX, my=e.clientY;
+  let bestLocal=0, bestD=Infinity;
+  for(let i=0;i<4;i++){
+    const a=face[i], b=face[(i+1)%4];
+    const pa=data.vertices[a], pb=data.vertices[b];
+    const wa=new THREE.Vector3(pa[0],pa[1],pa[2]).applyMatrix4(selectedObject.mesh.matrixWorld);
+    const wb=new THREE.Vector3(pb[0],pb[1],pb[2]).applyMatrix4(selectedObject.mesh.matrixWorld);
+    const sa=worldToScreen(wa), sb=worldToScreen(wb);
+    const d=pointSegDist(mx,my,sa.x,sa.y,sb.x,sb.y);
+    if(d<bestD){ bestD=d; bestLocal=i; }
+  }
+  loopCutRingSteps = computeLoopRing(data, fi, bestLocal);
+  drawLoopCutPreview(data, loopCutRingSteps);
+}
+function edgePairKeyOfStep(data, step, which){
+  const face=data.faces[step.faceIndex];
+  const li = which==='A' ? step.edgeA : step.edgeB;
+  return edgeKey(face[li], face[(li+1)%4]);
+}
+function drawLoopCutPreview(data, ringSteps){
+  clearLoopCutPreview();
+  if(!ringSteps || ringSteps.length===0) return;
+  const pts=[];
+  ringSteps.forEach(step=>{
+    const face=data.faces[step.faceIndex];
+    const a=face[step.edgeA], b=face[(step.edgeA+1)%4];
+    const mid=v3scale(v3add(data.vertices[a],data.vertices[b]),0.5);
+    pts.push(new THREE.Vector3(mid[0],mid[1],mid[2]));
+  });
+  const last=ringSteps[ringSteps.length-1];
+  const faceL=data.faces[last.faceIndex];
+  const aL=faceL[last.edgeB], bL=faceL[(last.edgeB+1)%4];
+  const midB=v3scale(v3add(data.vertices[aL],data.vertices[bL]),0.5);
+  pts.push(new THREE.Vector3(midB[0],midB[1],midB[2]));
+  if(edgePairKeyOfStep(data,ringSteps[0],'A')===edgePairKeyOfStep(data,ringSteps[ringSteps.length-1],'B')){
+    pts.push(pts[0].clone()); // el anillo se cierra sobre sí mismo: cerramos también la línea
+  }
+  const geo=new THREE.BufferGeometry().setFromPoints(pts);
+  const mat=new THREE.LineBasicMaterial({color:0xffe066, depthTest:false, transparent:true, opacity:0.95});
+  loopCutPreviewLine=new THREE.Line(geo,mat);
+  loopCutPreviewLine.position.copy(selectedObject.position);
+  loopCutPreviewLine.rotation.copy(selectedObject.rotation);
+  loopCutPreviewLine.scale.copy(selectedObject.scale);
+  loopCutPreviewLine.renderOrder=9996;
+  scene.add(loopCutPreviewLine);
+}
+function commitLoopCutFromPreview(){
+  if(!loopCutRingSteps || loopCutRingSteps.length===0){ exitLoopCutMode(); return; }
+  pushUndo();
+  const data=selectedObject.baseMesh;
+  const midCache=new Map();
+  const orderedNewVerts=[];
+  const splits=[];
+  loopCutRingSteps.forEach((step,i)=>{
+    const face=data.faces[step.faceIndex];
+    const aA=face[step.edgeA], bA=face[(step.edgeA+1)%4];
+    const aB=face[step.edgeB], bB=face[(step.edgeB+1)%4];
+    const midA=getOrCreateMid(data, midCache, aA,bA);
+    const midB=getOrCreateMid(data, midCache, aB,bB);
+    splits.push({faceIndex:step.faceIndex, edgeALocal:step.edgeA, midA, midB});
+    orderedNewVerts.push(midA);
+    if(i===loopCutRingSteps.length-1) orderedNewVerts.push(midB);
+  });
+  const facesToRemove=new Set(splits.map(s=>s.faceIndex));
+  const newFacesAll=[];
+  splits.forEach(s=>{
+    const face=data.faces[s.faceIndex]; // todavía válido: aún no hemos tocado data.faces
+    const [f1,f2]=splitQuad(face, s.edgeALocal, s.midA, s.midB);
+    newFacesAll.push(f1,f2);
+  });
+  data.faces = data.faces.filter((f,fi)=>!facesToRemove.has(fi)).concat(newFacesAll);
+
+  editSelection.verts = new Set(orderedNewVerts);
+  editSelection.edges.clear(); editSelection.faces.clear();
+  if(editSelectMode==='edge'){
+    const newEdgeList = buildEdgeList(data);
+    const wantedKeys=new Set();
+    for(let i=0;i<orderedNewVerts.length-1;i++) wantedKeys.add(edgeKey(orderedNewVerts[i],orderedNewVerts[i+1]));
+    newEdgeList.forEach(([a,b],idx)=>{ if(wantedKeys.has(edgeKey(a,b))) editSelection.edges.add(idx); });
+    editSelection.verts.clear();
+  }
+  loopCutMode=false;          // primero terminamos y emitimos NUESTRO cambio...
+  clearLoopCutPreview();
+  loopCutRingSteps=null;
+  syncEditFromData();
+  setStatus('Bucle insertado ('+orderedNewVerts.length+' vértices nuevos)');
+  if(onModalOrEditModeEnded) onModalOrEditModeEnded(); // ...y sólo entonces aplicamos algo en cola
+}
+
+/* -------------------------------------------------------------------------
    9. MODO EDICIÓN (vértices / aristas / caras) — con deformación EN VIVO
    ------------------------------------------------------------------------- */
 let editMode=false;
@@ -798,6 +1002,7 @@ function enterEditMode(){
 }
 function exitEditMode(){
   editMode=false;
+  if(loopCutMode) exitLoopCutMode();
   document.getElementById('edit-submode').classList.remove('visible');
   clearEditHelpers();
   if(selectedObject) selectedObject.rebuild();
@@ -997,12 +1202,13 @@ function tryGizmoDrag(e){
 let modal = {
   active:false, type:null, axis:null, dragStyle:'toggle',
   lastX:0, lastY:0, value:0, moveAccum:null,
-  objStart:null, vertStart:null, pivot:null, extrudeInfo:null,
+  objStart:null, vertStart:null, pivot:null, extrudeInfo:null, insetInfo:null,
+  meshSnapshot:null, selectionSnapshot:null,
 };
 
 function startModal(type, e){
-  if(!selectedObject) return;
-  if(type==='extrude' && (editSelectMode!=='face' || editSelection.faces.size===0)) return;
+  if(!selectedObject || !canEdit) return;
+  if((type==='extrude'||type==='inset') && (editSelectMode!=='face' || editSelection.faces.size===0)) return;
   pushUndo();
   modal.active=true; modal.type=type; modal.axis=null; modal.dragStyle='toggle';
   modal.lastX = e?e.clientX:lastMouseX; modal.lastY = e?e.clientY:lastMouseY;
@@ -1026,6 +1232,15 @@ function startModal(type, e){
     cx/=idxs.length; cy/=idxs.length; cz/=idxs.length;
     modal.pivot = new THREE.Vector3(cx,cy,cz).applyEuler(selectedObject.rotation).multiply(selectedObject.scale).add(selectedObject.position);
 
+    if(type==='extrude' || type==='inset'){
+      // snapshot completo (no solo posiciones) para poder revertir la topología entera si se cancela
+      modal.meshSnapshot = {
+        vertices: selectedObject.baseMesh.vertices.map(p=>p.slice()),
+        faces: selectedObject.baseMesh.faces.map(f=>f.slice())
+      };
+      modal.selectionSnapshot = new Set(editSelection.faces);
+    }
+
     if(type==='extrude'){
       const data = selectedObject.baseMesh;
       const facesSel = [...editSelection.faces];
@@ -1041,6 +1256,7 @@ function startModal(type, e){
       });
       const keepFaces = F.filter((f,fi)=>!editSelection.faces.has(fi));
       newFacesInfo.forEach(info=>{
+        info.topFaceIndex = keepFaces.length; // índice real de la cara superior (antes se calculaba mal)
         keepFaces.push(info.newIdx.slice());
         const k=info.face.length;
         const c = polygonCentroid(V, info.face);
@@ -1053,13 +1269,42 @@ function startModal(type, e){
         }
       });
       data.faces = keepFaces;
-      editSelection.faces = new Set();
-      const startIdx = keepFaces.length - newFacesInfo.length;
-      for(let k=0;k<newFacesInfo.length;k++) editSelection.faces.add(startIdx+k);
+      editSelection.faces = new Set(newFacesInfo.map(info=>info.topFaceIndex)); // selección correcta de las caras extruidas
       modal.extrudeInfo = newFacesInfo;
       modal.vertStart = new Map();
       newFacesInfo.forEach(info=> info.newIdx.forEach(vi=>{ modal.vertStart.set(vi, data.vertices[vi].slice()); }));
       modal.axis='normal';
+      syncEditFromData();
+    } else if(type==='inset'){
+      const data = selectedObject.baseMesh;
+      const facesSel = [...editSelection.faces];
+      const V=data.vertices, F=data.faces;
+      const insetInfo=[];
+      facesSel.forEach(fi=>{
+        const face=F[fi];
+        const c=polygonCentroid(V,face);
+        const insetIdx = face.map(vi=>{ V.push(V[vi].slice()); return V.length-1; }); // empiezan coincidentes (t=0)
+        insetInfo.push({face:face.slice(), insetIdx, centroid:c});
+      });
+      const keepFaces = F.filter((f,fi)=>!editSelection.faces.has(fi));
+      insetInfo.forEach(info=>{
+        info.innerFaceIndex = keepFaces.length;
+        keepFaces.push(info.insetIdx.slice());
+        const k=info.face.length;
+        for(let e=0;e<k;e++){
+          const a=info.face[e], b=info.face[(e+1)%k];
+          const ia=info.insetIdx[e], ib=info.insetIdx[(e+1)%k];
+          const mid=v3scale(v3add(V[a],V[b]),0.5);
+          const outward=v3sub(mid, info.centroid);
+          pushQuadOriented(V,keepFaces,a,b,ib,ia,outward);
+        }
+      });
+      data.faces = keepFaces;
+      editSelection.faces = new Set(insetInfo.map(info=>info.innerFaceIndex));
+      modal.insetInfo = insetInfo;
+      modal.vertStart = new Map();
+      insetInfo.forEach(info=> info.insetIdx.forEach(vi=>{ modal.vertStart.set(vi, data.vertices[vi].slice()); }));
+      modal.axis=null;
       syncEditFromData();
     }
   }
@@ -1093,7 +1338,7 @@ function handleModalMouseMove(e){
       const nWorld=new THREE.Vector3(n[0],n[1],n[2]).applyEuler(selectedObject.rotation).normalize();
       const p0=worldToScreen(modal.pivot), p1=worldToScreen(modal.pivot.clone().add(nWorld));
       const sd=new THREE.Vector2(p1.x-p0.x,p1.y-p0.y); const len=sd.length()||1; sd.divideScalar(len);
-      modal.value += (dx*sd.x+dy*sd.y)*distScale*40;
+      modal.value += (dx*sd.x+dy*sd.y)*distScale;
       applyExtrudeOffset(modal.value);
       updateModalHint(modal.value.toFixed(3));
     } else if(modal.axis){
@@ -1121,6 +1366,10 @@ function handleModalMouseMove(e){
     modal.value = Math.max(0.001, modal.value*(1+(dx-dy)*0.006*shiftFactor));
     applyScale(modal.value);
     updateModalHint(modal.value.toFixed(3));
+  } else if(modal.type==='inset'){
+    modal.value = Math.max(0, Math.min(0.9, modal.value + (dx-dy)*0.004*shiftFactor));
+    applyInset(modal.value);
+    updateModalHint('Inset: '+modal.value.toFixed(3));
   }
 }
 
@@ -1146,6 +1395,19 @@ function applyExtrudeOffset(amount){
       const start=modal.vertStart.get(vi);
       const p=selectedObject.baseMesh.vertices[vi];
       p[0]=start[0]+n[0]*amount; p[1]=start[1]+n[1]*amount; p[2]=start[2]+n[2]*amount;
+    });
+  });
+  syncEditFromData();
+}
+function applyInset(t){
+  modal.insetInfo.forEach(info=>{
+    info.insetIdx.forEach((vi,k)=>{
+      const orig = selectedObject.baseMesh.vertices[info.face[k]]; // vértice ORIGINAL, intacto, siempre disponible
+      const c = info.centroid;
+      const p = selectedObject.baseMesh.vertices[vi];
+      p[0]=orig[0]+(c[0]-orig[0])*t;
+      p[1]=orig[1]+(c[1]-orig[1])*t;
+      p[2]=orig[2]+(c[2]-orig[2])*t;
     });
   });
   syncEditFromData();
@@ -1203,6 +1465,7 @@ function applyScale(factor){
 function confirmModal(){
   if(!modal.active) return;
   modal.active=false;
+  modal.meshSnapshot=null; modal.selectionSnapshot=null;
   hideModalHint();
   updateConstraintLine();
   if(!editMode){ selectedObject.rebuild(); }
@@ -1218,6 +1481,12 @@ function cancelModal(){
     selectedObject.rotation.copy(modal.objStart.rotation);
     selectedObject.scale.copy(modal.objStart.scale);
     selectedObject.syncTransform();
+  } else if(modal.meshSnapshot){
+    // extrude/inset crearon topología nueva: revertimos la malla entera, no solo posiciones
+    selectedObject.baseMesh.vertices = modal.meshSnapshot.vertices;
+    selectedObject.baseMesh.faces = modal.meshSnapshot.faces;
+    editSelection.faces = new Set(modal.selectionSnapshot);
+    syncEditFromData();
   } else {
     modal.vertStart.forEach((start,idx)=>{
       const p=selectedObject.baseMesh.vertices[idx];
@@ -1225,6 +1494,7 @@ function cancelModal(){
     });
     syncEditFromData();
   }
+  modal.meshSnapshot=null; modal.selectionSnapshot=null;
   modal.active=false;
   hideModalHint();
   updateConstraintLine();
@@ -1273,15 +1543,20 @@ function updateConstraintLine(){
 let lastMouseX=innerWidth/2, lastMouseY=innerHeight/2;
 
 canvas.addEventListener('mousedown',(e)=>{
-  if(modal.active){
-    if(e.button===0){ confirmModal(); } else if(e.button===2){ cancelModal(); }
-    e.preventDefault();
-    return;
-  }
   if(e.button===1){
     nav.dragging=true;
     nav.mode = e.shiftKey?'pan':(e.ctrlKey?'dolly':'orbit');
     nav.lastX=e.clientX; nav.lastY=e.clientY;
+    e.preventDefault();
+    return;
+  }
+  if(loopCutMode){
+    if(e.button===0){ commitLoopCutFromPreview(); } else if(e.button===2){ exitLoopCutMode(); }
+    e.preventDefault();
+    return;
+  }
+  if(modal.active){
+    if(e.button===0){ confirmModal(); } else if(e.button===2){ cancelModal(); }
     e.preventDefault();
     return;
   }
@@ -1293,7 +1568,7 @@ canvas.addEventListener('mousedown',(e)=>{
 window.addEventListener('mousemove',(e)=>{
   lastMouseX=e.clientX; lastMouseY=e.clientY;
   if(modal.active){ handleModalMouseMove(e); return; }
-  if(!nav.dragging) return;
+  if(!nav.dragging){ if(loopCutMode) updateLoopCutPreview(e); return; }
   const dx=e.clientX-nav.lastX, dy=e.clientY-nav.lastY;
   nav.lastX=e.clientX; nav.lastY=e.clientY;
   if(nav.mode==='orbit'){
@@ -1334,6 +1609,17 @@ function handleGlobalKey(e){
 
   if((k==='z'||k==='Z') && (e.ctrlKey||e.metaKey)){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); return; }
   if((k==='y'||k==='Y') && (e.ctrlKey||e.metaKey)){ e.preventDefault(); redo(); return; }
+  if((k==='r'||k==='R') && (e.ctrlKey||e.metaKey)){
+    e.preventDefault(); // antes esto recargaba la página; ahora abre/cierra Loop Cut
+    if(loopCutMode){ exitLoopCutMode(); }
+    else if(editMode && canEdit){ enterLoopCutMode(); }
+    return;
+  }
+
+  if(loopCutMode){
+    if(k==='Escape'){ exitLoopCutMode(); }
+    return;
+  }
 
   if(modal.active){
     if(k==='Escape'){ cancelModal(); return; }
@@ -1350,6 +1636,7 @@ function handleGlobalKey(e){
   if(k==='r'||k==='R'){ startModal('rotate',{clientX:lastMouseX,clientY:lastMouseY}); return; }
   if(k==='s'||k==='S'){ startModal('scale',{clientX:lastMouseX,clientY:lastMouseY}); return; }
   if((k==='e'||k==='E') && editMode){ startModal('extrude',{clientX:lastMouseX,clientY:lastMouseY}); return; }
+  if((k==='i'||k==='I') && editMode){ startModal('inset',{clientX:lastMouseX,clientY:lastMouseY}); return; }
   if(k==='Delete' || k==='x' || k==='X'){
     if(!editMode && selectedObject){ deleteObject(selectedObject); }
     else if(editMode && selectedObject){ deleteSelectedGeometry(); }
@@ -1381,6 +1668,7 @@ function handleGlobalKey(e){
 }
 
 function deleteSelectedGeometry(){
+  if(!canEdit) return;
   pushUndo();
   const data=selectedObject.baseMesh;
   if(editSelectMode==='face' && editSelection.faces.size){
@@ -1412,6 +1700,7 @@ function deleteSelectedGeometry(){
 }
 
 function duplicateObject(obj){
+  if(!canEdit) return;
   pushUndo();
   const data = {vertices:obj.baseMesh.vertices.map(p=>p.slice()), faces:obj.baseMesh.faces.map(f=>f.slice())};
   objCounter[obj.kind]=(objCounter[obj.kind]||0)+1;
@@ -1467,7 +1756,7 @@ function pushUndo(){
   redoStack.length=0;
   updateUndoButtons();
 }
-function restoreState(snap){
+function restoreState(snap, opts={}){
   objects.forEach(o=>o.dispose());
   objects=[];
   snap.objects.forEach(sd=>{
@@ -1482,10 +1771,18 @@ function restoreState(snap){
     objects.push(o);
   });
   objCounter={...snap.objCounter}; paletteIdx=snap.paletteIdx;
-  selectObject(snap.selectedIndex>=0 ? objects[snap.selectedIndex] : null);
+  let toSelect=null;
+  if(opts.preserveSelectionByName){
+    toSelect = objects.find(o=>o.name===opts.preserveSelectionByName) || null;
+  }
+  if(!toSelect){
+    toSelect = snap.selectedIndex>=0 ? objects[snap.selectedIndex] : null;
+  }
+  selectObject(toSelect);
   refreshOutliner();
 }
 function undo(){
+  if(!canEdit){ setStatus('Solo quien modela puede deshacer'); return; }
   if(undoStack.length===0){ setStatus('Nada que deshacer'); return; }
   const wasEdit=editMode;
   if(editMode){ clearEditHelpers(); editMode=false; }
@@ -1497,6 +1794,7 @@ function undo(){
   setStatus('Deshecho');
 }
 function redo(){
+  if(!canEdit){ setStatus('Solo quien modela puede rehacer'); return; }
   if(redoStack.length===0){ setStatus('Nada que rehacer'); return; }
   const wasEdit=editMode;
   if(editMode){ clearEditHelpers(); editMode=false; }

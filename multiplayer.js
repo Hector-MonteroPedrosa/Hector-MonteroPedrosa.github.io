@@ -142,12 +142,28 @@ async function joinOrCreateRoom(code, isCreator) {
 }
 
 function tryApplyRemote(snapshotData) {
-  if (modal.active || editMode) {
+  // Sólo aplazamos si hay un arrastre G/R/S/E/Inset o un Loop Cut EN CURSO (tocar sus índices
+  // a mitad de operación los rompería). Estar simplemente en Modo Edición mirando ya NO bloquea
+  // nada: así los cambios de otros se ven en vivo, no sólo al volver a Modo Objeto.
+  if (modal.active || loopCutMode) {
     deferredRemoteSnapshot = snapshotData; // nos quedamos solo con la más reciente
     return;
   }
   applyingRemote = true;
-  try { restoreState(snapshotData); } finally { applyingRemote = false; }
+  try {
+    const wasEditMode = editMode;
+    const selName = selectedObject ? selectedObject.name : null;
+    restoreState(snapshotData, { preserveSelectionByName: selName });
+    if (wasEditMode) {
+      // la topología pudo cambiar por completo: no reutilizamos índices de selección viejos,
+      // simplemente refrescamos los ayudantes (puntos/aristas) contra la malla nueva.
+      editSelection.verts.clear(); editSelection.edges.clear(); editSelection.faces.clear();
+      if (selectedObject) { editMode = true; buildEditHelpers(); syncEditFromData(); }
+      else { editMode = false; document.getElementById('mode-select').value = 'object'; clearEditHelpers(); }
+    }
+  } finally {
+    applyingRemote = false;
+  }
 }
 function flushDeferredRemote() {
   if (deferredRemoteSnapshot) {
