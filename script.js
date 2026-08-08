@@ -1093,12 +1093,23 @@ function exitEditMode(){
   setStatus('Modo Objeto');
   if(onModalOrEditModeEnded) onModalOrEditModeEnded();
 }
+function makeCircleDotTexture(){
+  const size=64;
+  const c=document.createElement('canvas'); c.width=c.height=size;
+  const ctx=c.getContext('2d');
+  ctx.beginPath();
+  ctx.arc(size/2,size/2,size/2-2,0,Math.PI*2);
+  ctx.fillStyle='#ffffff';
+  ctx.fill();
+  return new THREE.CanvasTexture(c);
+}
+const circleDotTexture = makeCircleDotTexture();
 function buildEditHelpers(){
   clearEditHelpers();
   if(!selectedObject) return;
   const pGeo=new THREE.BufferGeometry();
   pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(selectedObject.baseMesh.vertices.length*3),3));
-  const pMat=new THREE.PointsMaterial({size:7, sizeAttenuation:false, vertexColors:true, depthTest:true});
+  const pMat=new THREE.PointsMaterial({size:9, sizeAttenuation:false, vertexColors:true, map:circleDotTexture, transparent:true, alphaTest:0.4, depthTest:true});
   editHelperPoints = new THREE.Points(pGeo,pMat);
   editHelperPoints.renderOrder=999;
   scene.add(editHelperPoints);
@@ -1329,34 +1340,54 @@ function startModal(type, e){
       const data = selectedObject.baseMesh;
       const facesSel = [...editSelection.faces];
       const V=data.vertices, F=data.faces;
-      const newFacesInfo=[];
+
+      // normal media del grupo: UNA sola dirección de extrusión para toda la región (como el E de Blender)
+      let n=[0,0,0];
+      facesSel.forEach(fi=>{ n=v3add(n, polygonNormal(V,F[fi])); });
+      n=v3norm(n);
+
+      // vértices usados por las caras seleccionadas: cada uno se duplica UNA sola vez (no una por cada cara
+      // que lo comparte, que era el bug: caras adyacentes se quedaban con vértices distintos y se separaban)
+      const usedVerts = new Set();
+      facesSel.forEach(fi=>F[fi].forEach(vi=>usedVerts.add(vi)));
+
+      // recopilar aristas + de qué cara vienen (para orientar las paredes), ANTES de tocar F
+      const edgeCount = new Map();
+      const edgeOccurrences = [];
       facesSel.forEach(fi=>{
         const face=F[fi];
-        const n=polygonNormal(V,face);
-        const base=V.length;
-        face.forEach(vi=>V.push(V[vi].slice()));
-        const newIdx=face.map((_,k)=>base+k);
-        newFacesInfo.push({face:face.slice(), newIdx, normal:n});
-      });
-      const keepFaces = F.filter((f,fi)=>!editSelection.faces.has(fi));
-      newFacesInfo.forEach(info=>{
-        info.topFaceIndex = keepFaces.length; // índice real de la cara superior (antes se calculaba mal)
-        keepFaces.push(info.newIdx.slice());
-        const k=info.face.length;
-        const c = polygonCentroid(V, info.face);
-        for(let e=0;e<k;e++){
-          const a=info.face[e], b=info.face[(e+1)%k];
-          const na=info.newIdx[e], nb=info.newIdx[(e+1)%k];
-          const mid=v3scale(v3add(V[a],V[b]),0.5);
-          const outward=v3sub(mid,c);
-          pushQuadOriented(V,keepFaces,a,b,nb,na,outward);
+        const centroid = polygonCentroid(V, face);
+        const k=face.length;
+        for(let i=0;i<k;i++){
+          const a=face[i], b=face[(i+1)%k];
+          const key=edgeKey(a,b);
+          edgeCount.set(key,(edgeCount.get(key)||0)+1);
+          edgeOccurrences.push({a,b,key,centroid});
         }
       });
-      data.faces = keepFaces;
-      editSelection.faces = new Set(newFacesInfo.map(info=>info.topFaceIndex)); // selección correcta de las caras extruidas
-      modal.extrudeInfo = newFacesInfo;
+
+      const vertMap = new Map();
+      usedVerts.forEach(vi=>{ vertMap.set(vi, V.push(V[vi].slice())-1); });
+
+      // pared SOLO en aristas de frontera (las compartidas por 2 caras seleccionadas quedan sin pared: siguen unidas)
+      const wallFaces=[];
+      const seenBoundary=new Set();
+      edgeOccurrences.forEach(({a,b,key,centroid})=>{
+        if(edgeCount.get(key)!==1 || seenBoundary.has(key)) return;
+        seenBoundary.add(key);
+        const na=vertMap.get(a), nb=vertMap.get(b);
+        const mid=v3scale(v3add(V[a],V[b]),0.5);
+        const outward=v3sub(mid,centroid);
+        pushQuadOriented(V,wallFaces,a,b,nb,na,outward);
+      });
+
+      facesSel.forEach(fi=>{ F[fi]=F[fi].map(vi=>vertMap.get(vi)); }); // las caras seleccionadas pasan a los vértices nuevos
+      F.push(...wallFaces);
+      // editSelection.faces NO cambia: los mismos índices ya apuntan a las caras (ahora elevadas)
+
+      modal.extrudeInfo = [{normal:n}]; // normal única compartida por toda la región
       modal.vertStart = new Map();
-      newFacesInfo.forEach(info=> info.newIdx.forEach(vi=>{ modal.vertStart.set(vi, data.vertices[vi].slice()); }));
+      vertMap.forEach(newIdx=>{ modal.vertStart.set(newIdx, V[newIdx].slice()); });
       modal.axis='normal';
       syncEditFromData();
     } else if(type==='inset'){
@@ -1473,13 +1504,11 @@ function applyMove(deltaWorld){
   }
 }
 function applyExtrudeOffset(amount){
-  modal.extrudeInfo.forEach(info=>{
-    const n=info.normal;
-    info.newIdx.forEach(vi=>{
-      const start=modal.vertStart.get(vi);
-      const p=selectedObject.baseMesh.vertices[vi];
-      p[0]=start[0]+n[0]*amount; p[1]=start[1]+n[1]*amount; p[2]=start[2]+n[2]*amount;
-    });
+  const n = modal.extrudeInfo[0].normal;
+  modal.vertStart.forEach((start,vi)=>{
+    const p=selectedObject.baseMesh.vertices[vi];
+    if(!p) return;
+    p[0]=start[0]+n[0]*amount; p[1]=start[1]+n[1]*amount; p[2]=start[2]+n[2]*amount;
   });
   syncEditFromData();
 }
@@ -1751,13 +1780,24 @@ function handleGlobalKey(e){
   if(k==='z'||k==='Z'){ toggleWireOverlay(); return; }
 }
 
+function pruneOrphanVertices(data){
+  const used = new Set();
+  data.faces.forEach(f=>f.forEach(vi=>used.add(vi)));
+  if(used.size === data.vertices.length) return; // nada que limpiar
+  const remap = new Map(); const newV=[];
+  data.vertices.forEach((p,i)=>{ if(used.has(i)){ remap.set(i,newV.length); newV.push(p);} });
+  data.faces = data.faces.map(f=>f.map(vi=>remap.get(vi)));
+  data.vertices = newV;
+}
 function deleteSelectedGeometry(){
   if(!canEdit) return;
   pushUndo();
   const data=selectedObject.baseMesh;
+  let changed=false;
   if(editSelectMode==='face' && editSelection.faces.size){
     data.faces = data.faces.filter((f,i)=>!editSelection.faces.has(i));
     editSelection.faces.clear();
+    changed=true;
   } else if(editSelectMode==='edge' && editSelection.edges.size){
     const edgeList = buildEdgeList(data);
     const selKeys = new Set();
@@ -1768,18 +1808,17 @@ function deleteSelectedGeometry(){
       return true;
     });
     editSelection.edges.clear();
+    changed=true;
   } else if(editSelectMode==='vertex' && editSelection.verts.size){
     const remove = editSelection.verts;
     data.faces = data.faces.filter(f=>!f.some(vi=>remove.has(vi)));
-    const remap=new Map(); const newV=[];
-    data.vertices.forEach((p,i)=>{ if(!remove.has(i)){ remap.set(i,newV.length); newV.push(p);} });
-    data.faces = data.faces.map(f=>f.map(vi=>remap.get(vi)));
-    data.vertices = newV;
     editSelection.verts.clear();
+    changed=true;
   } else {
     if(undoStack.length) undoStack.pop();
     return;
   }
+  if(changed) pruneOrphanVertices(data); // limpia SIEMPRE los vértices que se quedan sin ninguna cara
   syncEditFromData();
 }
 

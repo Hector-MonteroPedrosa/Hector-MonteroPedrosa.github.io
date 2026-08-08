@@ -212,6 +212,21 @@ button,input,select{font-family:inherit;font-size:11px;}
 .lobby-btn:disabled{opacity:.4;cursor:not-allowed;}
 .lobby-error{color:#e0a05a;font-size:11.5px;min-height:14px;margin:2px 0 0;line-height:1.4;}
 
+/* ---------- SALA DE ESPERA ---------- */
+.lobby-card.wide{width:400px;}
+.wr-room-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+.wr-room-row .room-pill{font-size:14px;}
+.wr-section-label{color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin:10px 0 4px;}
+.wr-player-list{display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto;}
+.wr-player{background:var(--bg-dark);border:1px solid #1a1a1a;border-radius:5px;padding:6px 10px;font-size:12.5px;display:flex;align-items:center;gap:6px;}
+.wr-player.wr-empty{opacity:.5;font-style:italic;}
+.wr-player .host-tag{color:#ffd166;font-size:10.5px;font-weight:700;}
+.wr-player .me-tag{color:var(--text-dim);font-size:10.5px;}
+.wr-settings{background:var(--bg-dark);border:1px solid #1a1a1a;border-radius:6px;padding:10px;}
+.wr-settings .row:last-of-type{margin-bottom:0;}
+.wr-lock-note{color:var(--text-dim);font-size:10.5px;margin:6px 0 0;}
+.wr-todo-note{color:#e0a05a;font-size:11px;background:rgba(224,160,90,.08);border:1px solid rgba(224,160,90,.25);border-radius:6px;padding:8px 10px;margin:10px 0 0;line-height:1.4;}
+
 /* ---------- room badge / presence ---------- */
 #room-badge{display:none;align-items:center;gap:6px;margin-left:8px;}
 .room-pill{background:var(--bg-dark);border:1px solid #1a1a1a;border-radius:12px;padding:4px 10px;font-weight:700;letter-spacing:.5px;cursor:pointer;user-select:none;}

@@ -23,6 +23,8 @@ let deferredRemoteSnapshot = null;
 let lastBroadcastAt = 0;
 let broadcastPending = false;
 const BROADCAST_MIN_INTERVAL_MS = 120;
+let onGameStateChanged = null; // lo asigna game.js: se llama con el estado de la sala (ajustes, fase, anfitrión)
+let onPresenceChanged = null;  // lo asigna game.js: se llama con el mapa de presencia (para la lista de jugadores)
 
 function firebaseIsConfigured() {
   return typeof firebaseConfig === 'object' && firebaseConfig &&
@@ -85,6 +87,8 @@ document.getElementById('room-pill').addEventListener('click', async () => {
    LOBBY
    ------------------------------------------------------------------------- */
 function showLobby() {
+  const r = new URLSearchParams(location.search).get('room');
+  if (r) document.getElementById('lobby-code-input').value = r.toUpperCase();
   document.getElementById('lobby-overlay').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
   const ready = firebaseIsConfigured();
@@ -137,17 +141,32 @@ async function joinOrCreateRoom(code, isCreator) {
 
   if (isCreator) {
     await roomRef.child('scene').set({ data: JSON.stringify(snapshotState()), sender: myUserId, ts: Date.now() });
+    await roomRef.child('game').set({
+      hostId: myUserId,
+      started: false,
+      settings: { roundSeconds: 80, roundsPerPlayer: 2 }
+    });
   } else {
     const snap = await roomRef.child('scene').get();
     if (!snap.exists()) throw new Error('esa sala no existe, comprueba el código');
   }
 
   currentRoomId = code;
+  history.replaceState(null, '', location.pathname + '?room=' + code);
 
   const presenceRef = roomRef.child('presence/' + myUserId);
   presenceRef.set({ name: myName, ts: Date.now() });
   presenceRef.onDisconnect().remove();
-  roomRef.child('presence').on('value', snap => renderPresence(snap.val() || {}));
+  roomRef.child('presence').on('value', snap => {
+    const map = snap.val() || {};
+    renderPresence(map);
+    if (typeof onPresenceChanged === 'function') onPresenceChanged(map);
+  });
+
+  roomRef.child('game').on('value', snap => {
+    const g = snap.val();
+    if (g && typeof onGameStateChanged === 'function') onGameStateChanged(g);
+  });
 
   roomRef.child('scene').on('value', snap => {
     const v = snap.val();
@@ -163,8 +182,12 @@ async function joinOrCreateRoom(code, isCreator) {
 
   document.getElementById('room-code-label').textContent = code;
   document.getElementById('room-badge').style.display = 'flex';
-  enterEditor();
+  showWaitingRoom();
   setStatus('Sala ' + code + (isCreator ? ' creada' : ' — conectado'));
+}
+function writeGameState(update) {
+  if (!currentRoomId) return;
+  fbDb.ref('rooms/' + currentRoomId + '/game').update(update);
 }
 
 function tryApplyRemote(snapshotData) {
