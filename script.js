@@ -542,6 +542,52 @@ function splitQuad(face, edgeALocal, midA, midB){
 }
 
 /* -------------------------------------------------------------------------
+   LOOP SELECT (Alt+Clic, como en Blender): recorre un bucle de aristas
+   pasando siempre, en cada vértice de valencia 4, por la arista que no
+   comparte ninguna de las dos caras con la arista actual.
+   ------------------------------------------------------------------------- */
+function buildVertexEdgeMap(edgeList){
+  const map=new Map();
+  edgeList.forEach(([a,b],i)=>{
+    if(!map.has(a)) map.set(a,[]);
+    if(!map.has(b)) map.set(b,[]);
+    map.get(a).push({other:b, edgeIndex:i});
+    map.get(b).push({other:a, edgeIndex:i});
+  });
+  return map;
+}
+function computeEdgeLoop(data, startEdgeIndex){
+  const edgeList = buildEdgeList(data);
+  const edgeFaceMap = buildEdgeFaceMap(data);
+  const vmap = buildVertexEdgeMap(edgeList);
+  const loopEdges = new Set([startEdgeIndex]);
+  function walk(a,b){
+    let curA=a, curB=b;
+    while(true){
+      const incident = (vmap.get(curB)||[]).map(x=>x.other);
+      if(incident.length!==4) break; // sólo continúa por vértices "regulares" (4 aristas)
+      const facesCur = edgeFaceMap.get(edgeKey(curA,curB))||[];
+      let next=null;
+      for(const nb of incident){
+        if(nb===curA) continue;
+        const facesNb = edgeFaceMap.get(edgeKey(curB,nb))||[];
+        const shares = facesNb.some(f=>facesCur.some(f2=>f2.faceIndex===f.faceIndex));
+        if(!shares){ next=nb; break; } // la arista "de enfrente": no comparte cara con la actual
+      }
+      if(next==null) break;
+      const key=edgeKey(curB,next);
+      const idx = edgeList.findIndex(([x,y])=>edgeKey(x,y)===key);
+      if(idx<0 || loopEdges.has(idx)) break;
+      loopEdges.add(idx);
+      curA=curB; curB=next;
+    }
+  }
+  const [a0,b0]=edgeList[startEdgeIndex];
+  walk(a0,b0); walk(b0,a0); // recorre en ambas direcciones desde la arista de partida
+  return loopEdges;
+}
+
+/* -------------------------------------------------------------------------
    5. ESCENA THREE.JS
    ------------------------------------------------------------------------- */
 const canvas = document.getElementById('three-canvas');
@@ -829,6 +875,39 @@ function handleViewportClick(e){
   const cam=activeCamera();
   const mx=e.clientX, my=e.clientY;
 
+  if(e.altKey){
+    if(editSelectMode==='face'){
+      const ndc = ndcFromEvent(e);
+      raycaster.setFromCamera(ndc, cam);
+      const hits = raycaster.intersectObject(selectedObject.mesh);
+      if(hits.length){
+        const triToFace = selectedObject.mesh.geometry.userData.triToFace;
+        const fi = triToFace ? triToFace[hits[0].faceIndex] : hits[0].faceIndex;
+        const data = selectedObject.baseMesh;
+        const face = data.faces[fi];
+        if(face && face.length===4){
+          const bestLocal = nearestLocalEdgeIndex(face, data, selectedObject.mesh, mx, my);
+          const ring = computeLoopRing(data, fi, bestLocal);
+          if(!e.shiftKey) editSelection.faces.clear();
+          ring.forEach(step=>editSelection.faces.add(step.faceIndex));
+        }
+      } else if(!e.shiftKey){ editSelection.faces.clear(); }
+    } else {
+      const {index} = pickEdge(mx,my,cam);
+      if(index>=0){
+        const loop = computeEdgeLoop(selectedObject.baseMesh, index);
+        if(!e.shiftKey){ editSelection.edges.clear(); editSelection.verts.clear(); }
+        if(editSelectMode==='edge'){ loop.forEach(i=>editSelection.edges.add(i)); }
+        else {
+          const edgeList = buildEdgeList(selectedObject.baseMesh);
+          loop.forEach(i=>{ editSelection.verts.add(edgeList[i][0]); editSelection.verts.add(edgeList[i][1]); });
+        }
+      } else if(!e.shiftKey){ editSelection.edges.clear(); editSelection.verts.clear(); }
+    }
+    syncEditFromData();
+    return;
+  }
+
   if(editSelectMode==='face'){
     const ndc = ndcFromEvent(e);
     raycaster.setFromCamera(ndc, cam);
@@ -882,6 +961,20 @@ function clearLoopCutPreview(){
     loopCutPreviewLine=null;
   }
 }
+function nearestLocalEdgeIndex(face, data, mesh, mx, my){
+  let bestLocal=0, bestD=Infinity;
+  const k=face.length;
+  for(let i=0;i<k;i++){
+    const a=face[i], b=face[(i+1)%k];
+    const pa=data.vertices[a], pb=data.vertices[b];
+    const wa=new THREE.Vector3(pa[0],pa[1],pa[2]).applyMatrix4(mesh.matrixWorld);
+    const wb=new THREE.Vector3(pb[0],pb[1],pb[2]).applyMatrix4(mesh.matrixWorld);
+    const sa=worldToScreen(wa), sb=worldToScreen(wb);
+    const d=pointSegDist(mx,my,sa.x,sa.y,sb.x,sb.y);
+    if(d<bestD){ bestD=d; bestLocal=i; }
+  }
+  return bestLocal;
+}
 function updateLoopCutPreview(e){
   if(!loopCutMode || !selectedObject) return;
   const ndc=ndcFromEvent(e);
@@ -894,16 +987,7 @@ function updateLoopCutPreview(e){
   const face=data.faces[fi];
   if(!face || face.length!==4){ clearLoopCutPreview(); loopCutRingSteps=null; return; } // sólo quads
   const mx=e.clientX, my=e.clientY;
-  let bestLocal=0, bestD=Infinity;
-  for(let i=0;i<4;i++){
-    const a=face[i], b=face[(i+1)%4];
-    const pa=data.vertices[a], pb=data.vertices[b];
-    const wa=new THREE.Vector3(pa[0],pa[1],pa[2]).applyMatrix4(selectedObject.mesh.matrixWorld);
-    const wb=new THREE.Vector3(pb[0],pb[1],pb[2]).applyMatrix4(selectedObject.mesh.matrixWorld);
-    const sa=worldToScreen(wa), sb=worldToScreen(wb);
-    const d=pointSegDist(mx,my,sa.x,sa.y,sb.x,sb.y);
-    if(d<bestD){ bestD=d; bestLocal=i; }
-  }
+  const bestLocal = nearestLocalEdgeIndex(face, data, selectedObject.mesh, mx, my);
   loopCutRingSteps = computeLoopRing(data, fi, bestLocal);
   drawLoopCutPreview(data, loopCutRingSteps);
 }

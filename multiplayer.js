@@ -55,6 +55,32 @@ function escapeHtml(s) {
   return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* seguimos al método de reserva */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    return true;
+  } catch (e) { return false; }
+}
+document.getElementById('room-pill').addEventListener('click', async () => {
+  if (!currentRoomId) return;
+  const ok = await copyToClipboard(currentRoomId);
+  const fb = document.getElementById('copy-feedback');
+  fb.textContent = ok ? '¡Copiado!' : 'No se pudo copiar';
+  fb.classList.add('show');
+  clearTimeout(fb._t);
+  fb._t = setTimeout(() => fb.classList.remove('show'), 1400);
+});
+
 /* -------------------------------------------------------------------------
    LOBBY
    ------------------------------------------------------------------------- */

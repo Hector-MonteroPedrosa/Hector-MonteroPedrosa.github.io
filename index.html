@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>WebBlender – Modelado 3D</title>
+<title>PolyGuess – Modelado 3D</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -11,7 +11,7 @@
 <!-- LOBBY: elegir sala o modo local, antes de entrar al editor -->
 <div id="lobby-overlay" class="lobby-overlay">
   <div class="lobby-card">
-    <h1>◆ WebBlender<span class="lobby-sub">Modelado 3D multijugador</span></h1>
+    <h1>◆ PolyGuess<span class="lobby-sub">Modelado 3D multijugador</span></h1>
     <input id="lobby-name" type="text" placeholder="Tu nombre" maxlength="20">
     <div class="lobby-row">
       <input id="lobby-code-input" type="text" placeholder="CÓDIGO DE SALA" maxlength="8">
@@ -27,7 +27,7 @@
 
   <!-- TOP BAR -->
   <div id="topbar">
-    <div class="logo">◆ WebBlender</div>
+    <div class="logo">◆ PolyGuess</div>
     <button class="menu-btn" id="btn-add-menu">Añadir ▾</button>
     <select class="mode-select" id="mode-select">
       <option value="object">Object Mode</option>
@@ -53,7 +53,8 @@
     </div>
 
     <div id="room-badge">
-      <span class="room-pill">🔗 <b id="room-code-label"></b></span>
+      <span class="room-pill" id="room-pill" title="Clic para copiar el código">🔗 <b id="room-code-label"></b></span>
+      <span id="copy-feedback" class="copy-feedback"></span>
       <span id="presence-list" class="presence-list"></span>
       <button id="chat-toggle-btn" class="toggle-btn" title="Chat de la sala">💬</button>
     </div>

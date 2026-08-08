@@ -214,7 +214,11 @@ button,input,select{font-family:inherit;font-size:11px;}
 
 /* ---------- room badge / presence ---------- */
 #room-badge{display:none;align-items:center;gap:6px;margin-left:8px;}
-.room-pill{background:var(--bg-dark);border:1px solid #1a1a1a;border-radius:12px;padding:4px 10px;font-weight:700;letter-spacing:.5px;}
+.room-pill{background:var(--bg-dark);border:1px solid #1a1a1a;border-radius:12px;padding:4px 10px;font-weight:700;letter-spacing:.5px;cursor:pointer;user-select:none;}
+.room-pill:hover{background:#4a4a4a;border-color:var(--accent2);}
+.room-pill:active{transform:scale(.96);}
+.copy-feedback{color:#8fd34c;font-size:10.5px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;}
+.copy-feedback.show{opacity:1;}
 .presence-list{display:flex;gap:3px;flex-wrap:wrap;max-width:220px;}
 .presence-chip{background:var(--accent);color:#fff;border-radius:10px;padding:2px 8px;font-size:10px;white-space:nowrap;}
 
