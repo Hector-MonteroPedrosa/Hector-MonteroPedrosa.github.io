@@ -59,6 +59,33 @@
 
 <div id="app" style="display:none;">
 
+  <!-- Overlay de elegir palabra: sólo se muestra a quien le toca modelar -->
+  <div id="choose-word-overlay" class="game-overlay" style="display:none;">
+    <div class="lobby-card">
+      <h1>¡Te toca modelar! <span class="lobby-sub">Elige una palabra — <span id="choose-word-timer">15</span>s</span></h1>
+      <div id="choose-word-buttons" class="choose-word-buttons"></div>
+    </div>
+  </div>
+
+  <!-- Recap de fin de ronda -->
+  <div id="roundend-overlay" class="game-overlay" style="display:none;">
+    <div class="lobby-card">
+      <h1>Ronda terminada <span class="lobby-sub" id="roundend-sub"></span></h1>
+      <div class="lobby-sub" style="font-size:20px;color:#fff;margin:6px 0;">La palabra era: <b id="roundend-word" style="color:var(--orange);"></b></div>
+      <div id="roundend-list" class="sb-list"></div>
+    </div>
+  </div>
+
+  <!-- Marcador final -->
+  <div id="gameend-overlay" class="game-overlay" style="display:none;">
+    <div class="lobby-card">
+      <h1>🏆 Fin de la partida</h1>
+      <div id="gameend-list" class="sb-list"></div>
+      <button id="gameend-again-btn" class="lobby-btn primary">Jugar otra vez</button>
+      <p id="gameend-wait-msg" class="lobby-error" style="color:var(--text-dim);">Esperando a que el anfitrión reinicie…</p>
+    </div>
+  </div>
+
   <!-- TOP BAR -->
   <div id="topbar">
     <div class="logo">◆ PolyGuess</div>
@@ -103,8 +130,20 @@
     </div>
   </div>
 
+  <!-- HUD DE PARTIDA: ronda, cronómetro y palabra/pista. Sólo visible con una partida en marcha -->
+  <div id="game-hud" style="display:none;">
+    <span id="hud-round" class="hud-round"></span>
+    <span id="hud-status" class="hud-status"></span>
+    <span id="hud-word" class="hud-word"></span>
+    <span id="hud-timer" class="hud-timer"></span>
+  </div>
+
   <!-- MAIN -->
   <div id="main">
+    <div id="scoreboard-panel" style="display:none;">
+      <div class="sb-title">Puntuación</div>
+      <div id="sb-list" class="sb-list"></div>
+    </div>
     <div id="toolbar">
       <button class="tool-btn active" data-tool="select" title="Seleccionar">⛶</button>
       <button class="tool-btn" data-tool="move" title="Mover (G)">✛</button>
@@ -143,28 +182,33 @@
           <div id="n-dims" style="color:#bbb;">–</div>
         </div>
       </div>
+    </div>
 
-      <div id="chat-panel" class="chat-panel">
+    <div id="rightpanel">
+      <div id="rp-tabs">
+        <button class="rp-tab active" data-rptab="scene">🗂️ Escena</button>
+        <button class="rp-tab" data-rptab="chat">💬 Chat<span id="chat-unread" class="chat-unread"></span></button>
+      </div>
+      <div id="rp-scene" class="rp-pane active">
+        <div id="outliner">
+          <div class="ol-title">Outliner</div>
+          <div id="ol-list"></div>
+        </div>
+        <div id="properties">
+          <div id="prop-tabs">
+            <button class="ptab active" data-ptab="object" title="Objeto">◈</button>
+            <button class="ptab" data-ptab="modifiers" title="Modificadores">🔧</button>
+            <button class="ptab" data-ptab="material" title="Material">🎨</button>
+          </div>
+          <div id="prop-content"></div>
+        </div>
+      </div>
+      <div id="rp-chat" class="rp-pane">
         <div id="chat-messages" class="chat-messages"></div>
         <div class="chat-input-row">
           <input id="chat-input" type="text" placeholder="Mensaje / adivina...">
           <button id="chat-send">➤</button>
         </div>
-      </div>
-    </div>
-
-    <div id="rightpanel">
-      <div id="outliner">
-        <div class="ol-title">Outliner</div>
-        <div id="ol-list"></div>
-      </div>
-      <div id="properties">
-        <div id="prop-tabs">
-          <button class="ptab active" data-ptab="object" title="Objeto">◈</button>
-          <button class="ptab" data-ptab="modifiers" title="Modificadores">🔧</button>
-          <button class="ptab" data-ptab="material" title="Material">🎨</button>
-        </div>
-        <div id="prop-content"></div>
       </div>
     </div>
   </div>

@@ -25,6 +25,7 @@ let broadcastPending = false;
 const BROADCAST_MIN_INTERVAL_MS = 120;
 let onGameStateChanged = null; // lo asigna game.js: se llama con el estado de la sala (ajustes, fase, anfitrión)
 let onPresenceChanged = null;  // lo asigna game.js: se llama con el mapa de presencia (para la lista de jugadores)
+let onChatSubmit = null;       // lo asigna game.js: intercepta el chat para comprobar intentos de adivinar
 
 function firebaseIsConfigured() {
   return typeof firebaseConfig === 'object' && firebaseConfig &&
@@ -247,7 +248,9 @@ function sendBroadcastNow() {
 /* -------------------------------------------------------------------------
    PRESENCIA
    ------------------------------------------------------------------------- */
+let lastPresenceMap = {};
 function renderPresence(map) {
+  lastPresenceMap = map;
   const el = document.getElementById('presence-list');
   el.innerHTML = '';
   Object.values(map).forEach(p => {
@@ -259,26 +262,38 @@ function renderPresence(map) {
 }
 
 /* -------------------------------------------------------------------------
-   CHAT (base para el futuro modo "adivina" tipo pinturillo)
+   CHAT — onChatSubmit permite a game.js interceptar mensajes como intentos
+   de adivinar la palabra antes de que lleguen al chat normal.
    ------------------------------------------------------------------------- */
 function appendChatMessage(msg) {
   const el = document.getElementById('chat-messages');
   const div = document.createElement('div');
-  div.innerHTML = `<b>${escapeHtml(msg.name)}:</b> ${escapeHtml(msg.text)}`;
+  if (msg.system) { div.className = 'chat-system'; div.textContent = msg.text; }
+  else { div.innerHTML = `<b>${escapeHtml(msg.name)}:</b> ${escapeHtml(msg.text)}`; }
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
 }
-function sendChatMessage() {
+function sendChatMessage(text) {
+  if (!text || !currentRoomId) return;
+  fbDb.ref('rooms/' + currentRoomId + '/chat').push({ name: myName, text, ts: Date.now(), uid: myUserId });
+}
+function sendSystemMessage(text) {
+  if (!currentRoomId) return;
+  fbDb.ref('rooms/' + currentRoomId + '/chat').push({ system: true, text, ts: Date.now() });
+}
+function handleChatSubmit() {
   const inp = document.getElementById('chat-input');
   const text = inp.value.trim();
-  if (!text || !currentRoomId) return;
-  fbDb.ref('rooms/' + currentRoomId + '/chat').push({ name: myName, text, ts: Date.now() });
+  if (!text) return;
   inp.value = '';
+  if (typeof onChatSubmit === 'function') { onChatSubmit(text); }
+  else { sendChatMessage(text); }
 }
-document.getElementById('chat-send').addEventListener('click', sendChatMessage);
-document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
+document.getElementById('chat-send').addEventListener('click', handleChatSubmit);
+document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') handleChatSubmit(); });
 document.getElementById('chat-toggle-btn').addEventListener('click', () => {
-  document.getElementById('chat-panel').classList.toggle('open');
+  const tab = document.querySelector('.rp-tab[data-rptab="chat"]');
+  if (tab) tab.click();
 });
 
 showLobby();

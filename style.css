@@ -250,3 +250,67 @@ button,input,select{font-family:inherit;font-size:11px;}
 .chat-input-row input{flex:1;background:var(--bg-field);border:none;color:var(--text);padding:8px 10px;min-width:0;}
 .chat-input-row button{background:var(--accent);border:none;color:#fff;padding:0 16px;cursor:pointer;font-size:14px;}
 .chat-input-row button:hover{background:var(--accent2);}
+.chat-system{text-align:center;color:var(--text-dim);font-size:10.5px;font-style:italic;margin:4px 0;}
+
+/* ---------- GAME HUD (ronda / palabra / cronómetro) ---------- */
+#game-hud{
+  display:none;align-items:center;justify-content:center;gap:22px;
+  background:linear-gradient(#3a2420,#2c1a17);border-bottom:2px solid var(--orange);
+  padding:6px 12px;flex-shrink:0;
+}
+.hud-round{color:#e0a05a;font-weight:700;font-size:12px;letter-spacing:.4px;}
+.hud-status{color:#ffd166;font-weight:600;font-size:12px;}
+.hud-word{color:#fff;font-weight:700;font-size:20px;letter-spacing:4px;font-family:monospace;}
+.hud-timer{color:#fff;font-weight:800;font-size:18px;background:var(--orange);border-radius:14px;padding:2px 14px;min-width:20px;text-align:center;}
+
+/* ---------- SCOREBOARD (columna izquierda) ---------- */
+#scoreboard-panel{
+  display:none;flex-direction:column;width:180px;background:var(--bg-header);
+  border-right:1px solid var(--border);padding:10px 8px;flex-shrink:0;overflow-y:auto;
+}
+.sb-title{color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;}
+.sb-list{display:flex;flex-direction:column;gap:5px;}
+.sb-entry{background:var(--bg-panel2);border:1px solid #2c2c2c;border-radius:6px;padding:6px 8px;display:flex;align-items:center;gap:7px;}
+.sb-entry.sb-modeler{border-color:var(--orange);background:rgba(232,121,42,.12);}
+.sb-rank{color:var(--text-dim);font-weight:700;font-size:11px;width:14px;}
+.sb-name{flex:1;font-size:12px;color:#eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sb-score{color:var(--orange);font-weight:700;font-size:12px;}
+.sb-pencil{font-size:12px;}
+
+/* ---------- panel derecho: pestañas Escena / Chat ---------- */
+#rp-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg-dark);}
+.rp-tab{flex:1;background:transparent;border:none;color:var(--text-dim);padding:8px 4px;cursor:pointer;font-size:11.5px;position:relative;}
+.rp-tab:hover{background:var(--bg-panel2);}
+.rp-tab.active{color:#fff;background:var(--bg-panel);box-shadow:inset 0 -2px 0 var(--accent);}
+.chat-unread{background:var(--orange);color:#fff;border-radius:8px;font-size:9px;padding:1px 5px;margin-left:4px;display:none;}
+.chat-unread.show{display:inline;}
+.rp-pane{display:none;flex-direction:column;flex:1;min-height:0;}
+.rp-pane.active{display:flex;}
+#rp-scene{overflow:hidden;}
+#rp-chat .chat-messages{flex:1;overflow-y:auto;padding:8px;font-size:11.5px;}
+#rp-chat .chat-input-row{display:flex;border-top:1px solid var(--border);flex-shrink:0;}
+#rp-chat .chat-input-row input{flex:1;background:var(--bg-field);border:none;color:var(--text);padding:9px 10px;min-width:0;}
+#rp-chat .chat-input-row button{background:var(--accent);border:none;color:#fff;padding:0 16px;cursor:pointer;font-size:14px;}
+#rp-chat .chat-input-row button:hover{background:var(--accent2);}
+
+/* ---------- overlays de partida (elegir palabra / fin de ronda / fin de partida) ---------- */
+.game-overlay{position:fixed;inset:0;background:rgba(10,10,10,.7);display:flex;align-items:center;justify-content:center;z-index:150;}
+.choose-word-buttons{display:flex;gap:10px;margin-top:14px;}
+.choose-word-btn{
+  flex:1;background:var(--bg-dark);border:2px solid var(--accent2);color:#fff;border-radius:8px;
+  padding:18px 10px;font-size:15px;font-weight:700;letter-spacing:.5px;cursor:pointer;
+}
+.choose-word-btn:hover{background:var(--accent);transform:translateY(-2px);}
+
+/* ---------- modo espectador: no es tu turno, sólo puedes mirar ---------- */
+.spectator-mode #toolbar,
+.spectator-mode #btn-add-menu,
+.spectator-mode #btn-shade-smooth,
+.spectator-mode #btn-shade-flat,
+.spectator-mode #undo-redo,
+.spectator-mode #npanel input,
+.spectator-mode #prop-content input,
+.spectator-mode #prop-content select,
+.spectator-mode #prop-content button{
+  pointer-events:none;opacity:.4;
+}
