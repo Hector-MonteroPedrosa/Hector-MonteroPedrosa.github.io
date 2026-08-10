@@ -302,6 +302,16 @@ button,input,select{font-family:inherit;font-size:11px;}
 }
 .choose-word-btn:hover{background:var(--accent);transform:translateY(-2px);}
 
+/* ---------- aviso central (aciertos) ---------- */
+.center-toast{
+  position:fixed;top:38%;left:50%;transform:translate(-50%,-50%) scale(.8);
+  background:rgba(20,20,20,.94);border:2px solid var(--orange);color:#fff;
+  font-size:26px;font-weight:800;padding:18px 36px;border-radius:14px;
+  z-index:300;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;text-align:center;
+}
+.center-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+.center-toast.toast-other{border-color:var(--accent2);font-size:19px;padding:14px 26px;}
+
 /* ---------- modo espectador: no es tu turno, sólo puedes mirar ---------- */
 .spectator-mode #toolbar,
 .spectator-mode #btn-add-menu,

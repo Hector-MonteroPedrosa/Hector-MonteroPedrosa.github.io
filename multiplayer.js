@@ -26,6 +26,7 @@ const BROADCAST_MIN_INTERVAL_MS = 120;
 let onGameStateChanged = null; // lo asigna game.js: se llama con el estado de la sala (ajustes, fase, anfitrión)
 let onPresenceChanged = null;  // lo asigna game.js: se llama con el mapa de presencia (para la lista de jugadores)
 let onChatSubmit = null;       // lo asigna game.js: intercepta el chat para comprobar intentos de adivinar
+let onCorrectGuessNotice = null; // lo asigna game.js: aviso central cuando alguien acierta
 
 function firebaseIsConfigured() {
   return typeof firebaseConfig === 'object' && firebaseConfig &&
@@ -40,6 +41,7 @@ function initFirebase() {
     try {
       fbApp = firebase.initializeApp(firebaseConfig);
       fbDb = firebase.database();
+      fbDb.ref('.info/serverTimeOffset').on('value', snap => { serverTimeOffset = snap.val() || 0; });
     } catch (e) {
       console.error('Error inicializando Firebase:', e);
       return false;
@@ -47,6 +49,8 @@ function initFirebase() {
   }
   return true;
 }
+let serverTimeOffset = 0;
+function serverNow(){ return Date.now() + serverTimeOffset; } // hora estimada del servidor: evita relojes locales desincronizados
 
 function makeRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O/1/I para evitar confusiones
@@ -224,7 +228,7 @@ function flushDeferredRemote() {
 }
 
 function scheduleBroadcast() {
-  if (applyingRemote || !currentRoomId) return;
+  if (applyingRemote || !currentRoomId || !canEdit) return;
   const now = Date.now();
   if (now - lastBroadcastAt >= BROADCAST_MIN_INTERVAL_MS) {
     lastBroadcastAt = now;
@@ -243,6 +247,11 @@ function sendBroadcastNow() {
   fbDb.ref('rooms/' + currentRoomId + '/scene').set({
     data: JSON.stringify(snapshotState()), sender: myUserId, ts: Date.now()
   });
+}
+function forceBroadcastScene() {
+  // salta la comprobación de canEdit: para resets de escena controlados por el sistema (nueva ronda)
+  lastBroadcastAt = Date.now();
+  sendBroadcastNow();
 }
 
 /* -------------------------------------------------------------------------
@@ -272,14 +281,15 @@ function appendChatMessage(msg) {
   else { div.innerHTML = `<b>${escapeHtml(msg.name)}:</b> ${escapeHtml(msg.text)}`; }
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
+  if (msg.kind==='correct_guess' && msg.uid!==myUserId && typeof onCorrectGuessNotice==='function') onCorrectGuessNotice(msg.text);
 }
 function sendChatMessage(text) {
   if (!text || !currentRoomId) return;
   fbDb.ref('rooms/' + currentRoomId + '/chat').push({ name: myName, text, ts: Date.now(), uid: myUserId });
 }
-function sendSystemMessage(text) {
+function sendSystemMessage(text, kind, uid) {
   if (!currentRoomId) return;
-  fbDb.ref('rooms/' + currentRoomId + '/chat').push({ system: true, text, ts: Date.now() });
+  fbDb.ref('rooms/' + currentRoomId + '/chat').push({ system: true, kind: kind||null, uid: uid||null, text, ts: Date.now() });
 }
 function handleChatSubmit() {
   const inp = document.getElementById('chat-input');

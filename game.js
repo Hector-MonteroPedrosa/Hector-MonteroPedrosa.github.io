@@ -60,10 +60,14 @@ function seededShuffleIndices(word){
   for(let i=idxs.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [idxs[i],idxs[j]]=[idxs[j],idxs[i]]; }
   return idxs;
 }
-function computeHintPattern(word, revealFraction){
+function computeHintPattern(word, remaining, duration){
   if(!word) return '';
   const order = seededShuffleIndices(word);
-  const revealCount = Math.floor(order.length*revealFraction);
+  const frac = duration>0 ? remaining/duration : 0;
+  let revealCount = 0;
+  if(frac<=0.5) revealCount = 1;   // pasada la mitad del tiempo: 1 letra
+  if(frac<=0.25) revealCount = 2;  // pasado un cuarto del tiempo: 2 letras
+  revealCount = Math.min(revealCount, order.length);
   const revealed = new Set(order.slice(0,revealCount));
   return word.split('').map((ch,i)=> ch===' ' ? '  ' : (revealed.has(i) ? ch.toUpperCase() : '_')).join(' ');
 }
@@ -86,10 +90,21 @@ function nameOf(uid){ return (lastPresenceMap[uid] && lastPresenceMap[uid].name)
    ------------------------------------------------------------------------- */
 onGameStateChanged = function(g){
   const prevPhase = gameState && gameState.phase;
+  const prevModeler = gameState && gameState.currentModelerId;
   gameState = g;
   updateCanEdit();
 
-  if(!g.started){ renderWaitingRoom(); return; }
+  if(!g.started){
+    clearInterval(drawTicker); clearInterval(chooseTicker);
+    document.getElementById('choose-word-overlay').style.display='none';
+    document.getElementById('roundend-overlay').style.display='none';
+    document.getElementById('gameend-overlay').style.display='none';
+    document.getElementById('game-hud').style.display='none';
+    document.getElementById('scoreboard-panel').style.display='none';
+    showWaitingRoom();
+    renderWaitingRoom();
+    return;
+  }
 
   hideWaitingRoom();
   document.getElementById('lobby-overlay').style.display='none';
@@ -122,6 +137,9 @@ onPresenceChanged = function(map){
 
 function updateCanEdit(){
   const should = !currentRoomId || (gameState && gameState.started && gameState.phase==='drawing' && amModeler());
+  if(canEdit && !should && typeof modal!=='undefined' && modal.active){
+    cancelModal(); // se acabó tu turno a media edición: se cancela limpio, no se manda tarde
+  }
   canEdit = should;
   document.getElementById('app').classList.toggle('spectator-mode', !!currentRoomId && !should);
 }
@@ -196,6 +214,13 @@ document.getElementById('wr-copy-link-btn').addEventListener('click', async ()=>
 /* -------------------------------------------------------------------------
    EMPEZAR PARTIDA (anfitrión)
    ------------------------------------------------------------------------- */
+function resetAndBroadcastScene(){
+  resetSceneForNewRound();
+  forceBroadcastScene();
+  // por si un cliente cuyo turno acaba de terminar mandó algo tarde durante la transición
+  setTimeout(()=>{ if(isHost()) forceBroadcastScene(); }, 900);
+}
+
 document.getElementById('wr-start-btn').addEventListener('click', ()=>{
   if(!isHost()) return;
   const order = Object.entries(lastPresenceMap).sort((a,b)=>(a[1].ts||0)-(b[1].ts||0)).map(([uid])=>uid);
@@ -205,9 +230,9 @@ document.getElementById('wr-start-btn').addEventListener('click', ()=>{
     started:true, turnOrder:order, turnIndex:0, round:1, totalRounds,
     currentModelerId: order[0], phase:'choosing', word:null,
     wordChoices: pickThreeWords(), correctGuessers:{}, roundsHistory:[],
-    chooseDeadline: Date.now()+15000,
+    chooseDeadline: serverNow()+15000,
   });
-  resetSceneForNewRound();
+  resetAndBroadcastScene();
 });
 
 /* -------------------------------------------------------------------------
@@ -231,7 +256,7 @@ function renderChooseOverlay(){
 function startChooseCountdown(){
   clearInterval(chooseTicker);
   chooseTicker = setInterval(()=>{
-    const remaining = Math.max(0, Math.ceil(((gameState.chooseDeadline||Date.now())-Date.now())/1000));
+    const remaining = Math.max(0, Math.ceil(((gameState.chooseDeadline||serverNow())-serverNow())/1000));
     const el = document.getElementById('choose-word-timer');
     if(el) el.textContent = remaining;
     if(remaining<=0){
@@ -243,7 +268,7 @@ function startChooseCountdown(){
 }
 function pickWord(word){
   clearInterval(chooseTicker);
-  writeGameState({ word, phase:'drawing', roundStartTs:Date.now(), correctGuessers:{}, wordChoices:null });
+  writeGameState({ word, phase:'drawing', roundStartTs:serverNow(), correctGuessers:{}, wordChoices:null });
 }
 
 /* -------------------------------------------------------------------------
@@ -262,7 +287,7 @@ function tickDrawPhase(){
   renderHUD();
   if(isHost()){
     const duration = (gameState.settings && gameState.settings.roundSeconds) || 80;
-    const elapsed = (Date.now()-(gameState.roundStartTs||Date.now()))/1000;
+    const elapsed = (serverNow()-(gameState.roundStartTs||serverNow()))/1000;
     const remaining = duration-elapsed;
     if(remaining<=0 || allNonModelersGuessed()){ endRoundAsHost(); }
   }
@@ -292,9 +317,9 @@ function hostAdvanceRound(){
   if(round>totalRounds){ writeGameState({ phase:'gameEnd' }); return; }
   writeGameState({
     turnIndex, round, currentModelerId: turnOrder[turnIndex], phase:'choosing',
-    word:null, wordChoices: pickThreeWords(), correctGuessers:{}, chooseDeadline: Date.now()+15000,
+    word:null, wordChoices: pickThreeWords(), correctGuessers:{}, chooseDeadline: serverNow()+15000,
   });
-  resetSceneForNewRound();
+  resetAndBroadcastScene();
 }
 
 /* -------------------------------------------------------------------------
@@ -305,15 +330,26 @@ onChatSubmit = function(text){
      && !(gameState.correctGuessers && gameState.correctGuessers[myUserId])){
     if(normalizeGuess(text)===normalizeGuess(gameState.word||'')){
       const duration = (gameState.settings && gameState.settings.roundSeconds) || 80;
-      const elapsed = (Date.now()-(gameState.roundStartTs||Date.now()))/1000;
+      const elapsed = (serverNow()-(gameState.roundStartTs||serverNow()))/1000;
       const points = computeGuessPoints(duration-elapsed, duration);
-      fbDb.ref('rooms/'+currentRoomId+'/game/correctGuessers/'+myUserId).set({ ts:Date.now(), points });
-      sendSystemMessage('🎉 '+myName+' ha adivinado la palabra');
+      fbDb.ref('rooms/'+currentRoomId+'/game/correctGuessers/'+myUserId).set({ ts:serverNow(), points });
+      sendSystemMessage('🎉 '+myName+' ha adivinado la palabra', 'correct_guess', myUserId);
+      showCenterToast('¡Correcto! +'+points+' puntos');
       return;
     }
   }
   sendChatMessage(text);
 };
+
+let toastTimer=null;
+function showCenterToast(text, cls){
+  const el = document.getElementById('center-toast');
+  el.textContent = text;
+  el.className = 'center-toast show' + (cls?(' '+cls):'');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ el.classList.remove('show'); }, 2400);
+}
+onCorrectGuessNotice = function(text){ showCenterToast(text, 'toast-other'); };
 
 /* -------------------------------------------------------------------------
    RENDER: HUD, MARCADOR, FIN DE RONDA, FIN DE PARTIDA
@@ -328,12 +364,12 @@ function renderHUD(){
     document.getElementById('hud-timer').textContent='';
   } else if(gameState.phase==='drawing'){
     const duration = (gameState.settings && gameState.settings.roundSeconds) || 80;
-    const elapsed = (Date.now()-(gameState.roundStartTs||Date.now()))/1000;
+    const elapsed = (serverNow()-(gameState.roundStartTs||serverNow()))/1000;
     const remaining = Math.max(0, duration-elapsed);
     document.getElementById('hud-status').textContent = amModeler() ? 'Te toca a ti' : `${modelerName} está modelando`;
     document.getElementById('hud-word').textContent = amModeler()
       ? (gameState.word||'').toUpperCase()
-      : computeHintPattern(gameState.word||'', Math.min(0.6, (elapsed/duration)*0.6));
+      : computeHintPattern(gameState.word||'', remaining, duration);
     document.getElementById('hud-timer').textContent = Math.ceil(remaining);
   } else {
     document.getElementById('hud-status').textContent='';
