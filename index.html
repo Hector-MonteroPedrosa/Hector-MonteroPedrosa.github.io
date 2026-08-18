@@ -20,6 +20,22 @@
     <button id="lobby-create-btn" class="lobby-btn primary">Crear sala nueva</button>
     <button id="lobby-solo-btn" class="lobby-btn ghost">Entrar en modo local (sin sala)</button>
     <p id="lobby-error" class="lobby-error"></p>
+    <div class="lobby-footer">
+      <a href="https://buymeacoffee.com/razzer" target="_blank" rel="noopener noreferrer" class="coffee-link">☕ Invítame a un café</a>
+      <button id="feedback-open-btn" class="feedback-link">💬 Enviar feedback</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORMULARIO DE FEEDBACK -->
+<div id="feedback-overlay" class="game-overlay" style="display:none;">
+  <div class="lobby-card">
+    <h1>Enviar feedback<span class="lobby-sub">Bugs, ideas, lo que sea — se manda directo, no hace falta email</span></h1>
+    <textarea id="feedback-text" class="feedback-textarea" placeholder="Cuéntame qué ha pasado o qué te gustaría..." maxlength="1000"></textarea>
+    <input id="feedback-name" type="text" placeholder="Tu nombre (opcional)" maxlength="30">
+    <button id="feedback-send-btn" class="lobby-btn primary">Enviar</button>
+    <button id="feedback-close-btn" class="lobby-btn ghost">Cerrar</button>
+    <p id="feedback-status" class="lobby-error"></p>
   </div>
 </div>
 
@@ -121,6 +137,7 @@
       <span id="presence-list" class="presence-list"></span>
       <button id="chat-toggle-btn" class="toggle-btn" title="Chat de la sala">💬</button>
     </div>
+    <button id="feedback-open-btn-2" class="toggle-btn" title="Enviar feedback" style="margin-left:6px;">💡</button>
 
     <div class="dropdown" id="add-dropdown">
       <div class="dd-item" data-add="cube">▣ Cubo</div>

@@ -312,6 +312,17 @@ button,input,select{font-family:inherit;font-size:11px;}
 .center-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
 .center-toast.toast-other{border-color:var(--accent2);font-size:19px;padding:14px 26px;}
 
+/* ---------- café / feedback ---------- */
+.lobby-footer{display:flex;flex-direction:column;gap:6px;margin-top:6px;align-items:center;}
+.coffee-link{color:#ffd166;font-size:11.5px;text-decoration:none;}
+.coffee-link:hover{text-decoration:underline;}
+.feedback-link{background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:2px;}
+.feedback-link:hover{color:#fff;}
+.feedback-textarea{
+  width:100%;min-height:100px;background:var(--bg-field);border:1px solid #1a1a1a;color:#fff;
+  border-radius:5px;padding:9px 10px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:10px;
+}
+
 /* ---------- modo espectador: no es tu turno, sólo puedes mirar ---------- */
 .spectator-mode #toolbar,
 .spectator-mode #btn-add-menu,

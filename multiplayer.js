@@ -306,4 +306,39 @@ document.getElementById('chat-toggle-btn').addEventListener('click', () => {
   if (tab) tab.click();
 });
 
+/* -------------------------------------------------------------------------
+   FEEDBACK — funciona incluso en modo local, no hace falta estar en una sala
+   ------------------------------------------------------------------------- */
+function openFeedback() {
+  document.getElementById('feedback-status').textContent = '';
+  document.getElementById('feedback-overlay').style.display = 'flex';
+}
+function closeFeedback() {
+  document.getElementById('feedback-overlay').style.display = 'none';
+}
+document.getElementById('feedback-open-btn').addEventListener('click', openFeedback);
+document.getElementById('feedback-open-btn-2').addEventListener('click', openFeedback);
+document.getElementById('feedback-close-btn').addEventListener('click', closeFeedback);
+document.getElementById('feedback-send-btn').addEventListener('click', async () => {
+  const text = document.getElementById('feedback-text').value.trim();
+  const statusEl = document.getElementById('feedback-status');
+  if (!text) { statusEl.textContent = 'Escribe algo antes de enviar.'; return; }
+  if (!initFirebase()) { statusEl.textContent = 'El feedback necesita que la sala esté configurada (falta firebase-config.js).'; return; }
+  try {
+    await fbDb.ref('feedback').push({
+      text,
+      name: document.getElementById('feedback-name').value.trim() || 'Anónimo',
+      ts: Date.now(),
+      page: location.href,
+    });
+    document.getElementById('feedback-text').value = '';
+    statusEl.style.color = '#8fd34c';
+    statusEl.textContent = '¡Gracias! Enviado.';
+    setTimeout(closeFeedback, 1200);
+  } catch (e) {
+    statusEl.style.color = '';
+    statusEl.textContent = 'No se pudo enviar: ' + e.message;
+  }
+});
+
 showLobby();

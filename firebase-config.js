@@ -20,11 +20,16 @@
       Realtime Database -> pestaña "Reglas", pega esto y publica:
         {
           "rules": {
-            "rooms": { "$roomId": { ".read": true, ".write": true } }
+            "rooms": { "$roomId": { ".read": true, ".write": true } },
+            "feedback": { ".read": false, ".write": true }
           }
         }
-      Esto abre solo la ruta "rooms" (sin datos sensibles) para que
-      cualquiera pueda crear/unirse a salas gratis, para siempre.
+      Esto abre la ruta "rooms" (sin datos sensibles) para que cualquiera
+      pueda crear/unirse a salas gratis, para siempre. Y abre "feedback"
+      solo para ESCRIBIR — nadie puede leer los mensajes de otros desde la
+      web, pero tú sí los ves entrando en Realtime Database -> feedback
+      dentro de tu propia consola de Firebase (eso no depende de estas
+      reglas, depende de que hayas iniciado sesión como dueño del proyecto).
 
    Con eso ya está: guarda este archivo y recarga la página.
    ========================================================================= */
