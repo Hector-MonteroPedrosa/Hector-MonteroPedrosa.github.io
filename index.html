@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: blueprint-paper look. Hero with a big name and a playable character controller with a debug HUD;
-   projects as panels with a colored header per engine (Unreal, Unity, multi-engine). Projects live in projects.json. */
+   projects as panels with a colored header per engine (Unreal, Unity, other). Projects live in projects.json. */
 :root {
   --bg: #E8EEF7;
   --surface: #F5F8FD;
@@ -136,7 +136,7 @@ section { padding-block: 48px; }
 .node-h .cat { font: 500 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.92; white-space: nowrap; }
 .node[data-cat="ue"] { --cat: var(--c-ue); }
 .node[data-cat="unity"] { --cat: var(--c-sys); }
-.node[data-cat="multi"] { --cat: var(--c-ai); }
+.node[data-cat="other"] { --cat: var(--c-ai); }
 .thumb { display: block; width: 100%; aspect-ratio: 16 / 7; background: var(--bg); border-bottom: 1px solid var(--line); object-fit: cover; }
 .tn { fill: var(--surface2); stroke: var(--line); stroke-width: 1; }
 .tw { fill: none; stroke: var(--cat); stroke-width: 2; opacity: 0.85; }
@@ -267,7 +267,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
       <div class="contact">
         <span class="label">Available for projects and collaborations</span>
         <h2>Let's talk</h2>
-        <div class="mail">
+        <div class="mail" id="mail" hidden>
           <code id="email"></code>
           <button class="btn" id="copy" type="button">Copy</button>
         </div>
@@ -285,28 +285,12 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 </footer>
 
 <script>
-/* ===== Site info (projects live in projects.json) ===== */
+/* ===== Hero text. Projects, about, toolbox and contact live in projects.json ===== */
 const CONFIG = {
   name: ["Héctor", "Montero"],
   tagline: "I turn design ideas into mechanics that feel good to play. I build gameplay in both Unreal Engine and Unity.",
-  about: [
-    "I'm a gameplay programmer interested in everything between the player pressing a button and the screen responding: controls, states, camera, combat and AI.",
-    "I work in both Unreal Engine and Unity, and I like to leave systems tidy so the design team can tweak them without fear."
-  ],
-  email: "your@email.com",
-  socials: [
-    { label: "GitHub", url: "https://github.com" },
-    { label: "LinkedIn", url: "https://www.linkedin.com" },
-    { label: "itch.io", url: "https://itch.io" },
-    { label: "YouTube", url: "https://www.youtube.com" }
-  ],
-  skills: [
-    { group: "Engines", items: ["Unreal Engine 5.6", "Blueprints", "Unity"] },
-    { group: "Gameplay", items: ["Character controllers", "State machines", "Combat systems", "Enemy AI", "Camera", "Input"] },
-    { group: "Workflow", items: ["Git", "Rapid prototyping", "In-game debugging"] }
-  ]
 };
-const CATS = { ue: "Unreal", unity: "Unity", multi: "Multi-engine" };
+const CATS = { ue: "Unreal", unity: "Unity", other: "Other" };
 
 /* ===== helpers ===== */
 const $ = (s, r = document) => r.querySelector(s);
@@ -318,20 +302,27 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;"
   $("#name").innerHTML = esc(a) + " <em>" + esc(b) + "</em>";
   $("#brand").innerHTML = esc(a) + " <span>" + esc(b) + "</span>";
   $("#tagline").textContent = CONFIG.tagline;
-  $("#about-text").innerHTML = CONFIG.about.map(p => "<p>" + esc(p) + "</p>").join("");
-  $("#skills").innerHTML = CONFIG.skills.map(g =>
-    '<div class="sk"><h3>' + esc(g.group) + '</h3><div class="tags">' +
-    g.items.map(i => '<span class="tag">' + esc(i) + "</span>").join("") + "</div></div>").join("");
-  $("#email").textContent = CONFIG.email;
-  $("#socials").innerHTML = CONFIG.socials.map(s =>
-    '<a href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer">' + esc(s.label) + " ↗</a>").join("");
   $("#foot-name").textContent = "© " + new Date().getFullYear() + " " + a + " " + b;
 })();
+
+let siteEmail = "";
+function renderBottom(d) {
+  const about = d.about || [], skills = d.skills || [], contact = d.contact || {}, socials = contact.socials || [];
+  $("#about-text").innerHTML = about.map(p => "<p>" + esc(p) + "</p>").join("");
+  $("#skills").innerHTML = skills.map(g =>
+    '<div class="sk"><h3>' + esc(g.group || "") + '</h3><div class="tags">' +
+    (g.items || []).map(i => '<span class="tag">' + esc(i) + "</span>").join("") + "</div></div>").join("");
+  siteEmail = contact.email || "";
+  $("#email").textContent = siteEmail;
+  $("#mail").hidden = !siteEmail;
+  $("#socials").innerHTML = socials.map(s =>
+    '<a href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer">' + esc(s.label) + " ↗</a>").join("");
+}
 
 $("#copy").addEventListener("click", async () => {
   const btn = $("#copy"), el = $("#email");
   try {
-    await navigator.clipboard.writeText(CONFIG.email);
+    await navigator.clipboard.writeText(siteEmail);
     btn.textContent = "Copied";
   } catch (e) {
     const r = document.createRange(); r.selectNodeContents(el);
@@ -368,15 +359,16 @@ function thumb(p) {
   });
   return '<svg class="thumb" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Sketch of ' + esc(p.title) + '">' + wires + boxes + "</svg>";
 }
+function pin(label, value) { return value ? "<li><span>" + label + "</span><b>" + esc(value) + "</b></li>" : ""; }
 function card(p, i) {
   const id = "d-" + (p.id || i);
-  const cat = CATS[p.cat] ? p.cat : "multi";
+  const cat = CATS[p.cat] ? p.cat : "other";
   const tags = p.tags || [], details = p.details || [], links = p.links || [];
   return '<article class="node" data-cat="' + cat + '">' +
     '<div class="node-h"><h3>' + esc(p.title) + '</h3><span class="cat">' + esc(CATS[cat]) + "</span></div>" +
     thumb(p) +
     '<div class="node-b"><p>' + esc(p.summary || "") + "</p>" +
-    '<ul class="pins"><li><span>Engine</span><b>' + esc(p.engine || "") + "</b></li><li><span>Role</span><b>" + esc(p.role || "") + "</b></li><li><span>Year</span><b>" + esc(p.year || "") + "</b></li></ul>" +
+    '<ul class="pins">' + pin("Engine", p.engine) + pin("Role", p.role) + pin("Year", p.year) + "</ul>" +
     '<div class="tags">' + tags.map(t => '<span class="tag">' + esc(t) + "</span>").join("") +
     (p.placeholder ? '<span class="badge" title="Replace this with your real project">Placeholder</span>' : "") + "</div></div>" +
     '<button class="more" type="button" aria-expanded="false" aria-controls="' + id + '">Details</button>' +
@@ -388,9 +380,9 @@ function renderProjects(list) {
   const grid = $("#grid"), filters = $("#filters");
   if (!list.length) { grid.innerHTML = '<p class="empty">No projects yet. Add them to projects.json.</p>'; return; }
   const cats = [["all", "All"]];
-  list.forEach(p => { const c = CATS[p.cat] ? p.cat : "multi"; if (!cats.some(x => x[0] === c)) cats.push([c, CATS[c]]); });
+  list.forEach(p => { const c = CATS[p.cat] ? p.cat : "other"; if (!cats.some(x => x[0] === c)) cats.push([c, CATS[c]]); });
   filters.innerHTML = cats.length > 2 ? cats.map((c, i) => '<button class="chip" type="button" data-f="' + c[0] + '" aria-pressed="' + (i === 0) + '">' + esc(c[1]) + "</button>").join("") : "";
-  function draw(f) { grid.innerHTML = list.filter(p => f === "all" || (CATS[p.cat] ? p.cat : "multi") === f).map(card).join(""); }
+  function draw(f) { grid.innerHTML = list.filter(p => f === "all" || (CATS[p.cat] ? p.cat : "other") === f).map(card).join(""); }
   draw("all");
   filters.addEventListener("click", e => {
     const b = e.target.closest(".chip"); if (!b) return;
@@ -406,7 +398,7 @@ function renderProjects(list) {
 }
 fetch("projects.json", { cache: "no-store" })
   .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-  .then(d => renderProjects(Array.isArray(d) ? d : (d.projects || [])))
+  .then(d => { renderProjects(Array.isArray(d) ? d : (d.projects || [])); if (!Array.isArray(d)) renderBottom(d); })
   .catch(() => { $("#grid").innerHTML = '<p class="empty">Could not load projects.json. Check that it sits next to this page and is valid JSON.</p>'; });
 
 /* ===== playable character controller ===== */
