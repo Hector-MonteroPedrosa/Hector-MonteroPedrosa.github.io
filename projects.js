@@ -63,7 +63,7 @@ window.SITE = {
       placeholder: false,
       summary: "Roguelike bullet hell with Upgrades and Debuffs",
       cover: "src/MBMR_Cover.png",
-      url: "https://www.youtube.com",
+      url: "https://hector-montero.itch.io/myboardmyrules",
       button: "View Page",
       engine: "Unity 6",
       role: "Gameplay Programmer & 3D Modeler",
