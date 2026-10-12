@@ -20,54 +20,55 @@ window.SITE = {
   projects: [
     {
       cat: "ue",
-      title: "UE 5.6 Project",
-      placeholder: true,
-      summary: "A complex project built with Blueprints, with several gameplay systems wired together.",
-      // cover: "images/ue56-project.png",
-      url: "https://store.steampowered.com",
+      title: "AlcheMess",
+      summary: "Online multiplayer potion-making game in the style of Overcooked, built with Blueprints in Unreal Engine 5.6",
+      cover: "src/AlcheMess_Cover.jpg",
+      url: "https://store.steampowered.com/app/4772620/AlcheMess/",
+      color: "#7C3AED",
       engine: "Unreal Engine 5.6",
       role: "Gameplay Programmer",
       year: "2026",
-      tags: ["Blueprints", "UE 5.6", "Gameplay"]
+      tags: ["Online multiplayer", "Blueprints", "UE 5.6"]
+    
+    },
+        {
+      cat: "unity",
+      title: "One of Us",
+      placeholder: false,
+      summary: "Story based game, where you have to investigate who was infected by a virus.",
+      cover: "src/OneOfUs_Cover.png",
+      url: "https://hector-montero.itch.io/one-of-us",
+      engine: "Unity",
+      role: "Gameplay Programmer & Modeling",
+      year: "2026",
+      tags: ["Dialoge", "Puzzles", "Unity 6"]
     },
     {
       cat: "other",
-      title: "Character Controller",
-      placeholder: true,
-      summary: "Movement with coyote time, jump buffering, variable jump height and a Celeste-style dash. Try it at the top of this page.",
-      // cover: "images/character-controller.png",
-      url: "https://github.com",
-      button: "View code",
-      color: "#7C3AED",
-      engine: "Unreal & Unity",
-      role: "Gameplay Programmer",
+      title: "PolyGuess",
+      placeholder: false,
+      summary: "Web multiplayer game where you guess what your friends are 3D modeling in real time",
+      cover: "src/PolyGuess_Cover.png",
+      url: "https://hector-montero.itch.io/polyguess",
+      button: "Play Game",
+      engine: "Three.js",
+      role: "Gameplay & Tools Programmer",
       year: "2026",
-      tags: ["Movement", "State machine", "Game feel"]
+      tags: ["Multiplayer", "Real-time sync", "3D Modeling Tools"]
     },
+
     {
       cat: "unity",
-      title: "Combat System",
-      placeholder: true,
-      summary: "Chainable attacks, cancel windows and damage with clear feedback for the player.",
-      // cover: "images/combat-system.png",
-      url: "https://itch.io",
-      engine: "Unity",
-      role: "Gameplay Programmer",
-      year: "2026",
-      tags: ["Combos", "Hitboxes", "Animation"]
-    },
-    {
-      cat: "ue",
-      title: "Enemy AI",
-      placeholder: true,
-      summary: "Enemies that patrol, detect the player and switch behavior depending on the situation.",
-      // cover: "images/enemy-ai.png",
+      title: "My Board My Rules",
+      placeholder: false,
+      summary: "Roguelike bullet hell with Upgrades and Debuffs",
+      cover: "src/MBMR_Cover.png",
       url: "https://www.youtube.com",
-      button: "Watch video",
-      engine: "Unreal Engine 5.6",
-      role: "Gameplay Programmer",
+      button: "View Page",
+      engine: "Unity 6",
+      role: "Gameplay Programmer & 3D Modeler",
       year: "2026",
-      tags: ["Behavior Tree", "Perception", "States"]
+      tags: ["Enemy AI", "Upgrade System", "States"]
     }
   ],
 
@@ -83,12 +84,12 @@ window.SITE = {
   ],
 
   contact: {
-    email: "your@email.com",
+    email: "monteropedrosahector@gmail.com",
     socials: [
-      { label: "GitHub", url: "https://github.com" },
-      { label: "LinkedIn", url: "https://www.linkedin.com" },
-      { label: "itch.io", url: "https://itch.io" },
-      { label: "YouTube", url: "https://www.youtube.com" }
+      //{ label: "GitHub", url: "https://github.com" },
+      { label: "LinkedIn", url: "https://www.linkedin.com/in/hectormontero/" },
+      { label: "itch.io", url: "https://hector-montero.itch.io/" },
+      //{ label: "YouTube", url: "https://www.youtube.com" }
     ]
   }
 };
