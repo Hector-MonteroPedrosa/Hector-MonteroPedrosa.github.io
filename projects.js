@@ -1,78 +1,73 @@
 /*
   Content of the site. Edit this file, save, and refresh index.html (no server needed).
 
-  projects[].cat   "ue" (Unreal) | "unity" (Unity) | "other"
-  projects[]       engine, role and year are optional: leave them out and that line is hidden.
-  projects[]       remove  placeholder: true  once a project is real.
-  projects[]       optional  image: "images/my-shot.png"  to show a screenshot/GIF instead of the node sketch.
+  Each project:
+    cat       "ue" (Unreal) | "unity" (Unity) | "other"
+    title, summary, tags
+    cover     path to the cover image, e.g. "images/my-game.png". Use 16:9, around 1280x720.
+              Leave it out and the card shows a node sketch instead.
+    url       page of the game (itch.io, Steam, GitHub, YouTube...). The cover and a button open it.
+              Leave it out and the button is hidden.
+    button    optional text for the button. Default: "View game".
+    color     optional card color, any CSS color: "#7C3AED", "rebeccapurple", "rgb(124 58 237)".
+              Leave it out and the color depends on cat.
+    engine, role, year   optional, each one is hidden when empty.
+    placeholder: true    shows a "Placeholder" badge. Remove it for real projects.
+
   about, skills and contact feed the About, Toolbox and Contact sections at the bottom.
 */
 window.SITE = {
   projects: [
     {
-      id: "ue56-project",
       cat: "ue",
       title: "UE 5.6 Project",
       placeholder: true,
       summary: "A complex project built with Blueprints, with several gameplay systems wired together.",
+      // cover: "images/ue56-project.png",
+      url: "https://store.steampowered.com",
       engine: "Unreal Engine 5.6",
       role: "Gameplay Programmer",
       year: "2026",
-      tags: ["Blueprints", "UE 5.6", "Gameplay"],
-      details: [
-        "Say what the game is and what you were responsible for.",
-        "Describe the hardest system you solved and how you did it.",
-        "Add the outcome: session length, team size, platform."
-      ],
-      links: [{ label: "Video", url: "https://www.youtube.com" }]
+      tags: ["Blueprints", "UE 5.6", "Gameplay"]
     },
     {
-      id: "character-controller",
       cat: "other",
       title: "Character Controller",
       placeholder: true,
       summary: "Movement with coyote time, jump buffering, variable jump height and a Celeste-style dash. Try it at the top of this page.",
+      // cover: "images/character-controller.png",
+      url: "https://github.com",
+      button: "View code",
+      color: "#7C3AED",
       engine: "Unreal & Unity",
       role: "Gameplay Programmer",
       year: "2026",
-      tags: ["Movement", "State machine", "Game feel"],
-      details: [
-        "Explain which parameters designers can tweak from the editor.",
-        "Describe how you separated input from the character states."
-      ],
-      links: [{ label: "Code", url: "https://github.com" }]
+      tags: ["Movement", "State machine", "Game feel"]
     },
     {
-      id: "combat-system",
       cat: "unity",
       title: "Combat System",
       placeholder: true,
       summary: "Chainable attacks, cancel windows and damage with clear feedback for the player.",
+      // cover: "images/combat-system.png",
+      url: "https://itch.io",
       engine: "Unity",
       role: "Gameplay Programmer",
       year: "2026",
-      tags: ["Combos", "Hitboxes", "Animation"],
-      details: [
-        "Summarize how a new attack is defined without touching the base code.",
-        "Include a short GIF of a combo."
-      ],
-      links: [{ label: "Video", url: "https://www.youtube.com" }]
+      tags: ["Combos", "Hitboxes", "Animation"]
     },
     {
-      id: "enemy-ai",
       cat: "ue",
       title: "Enemy AI",
       placeholder: true,
       summary: "Enemies that patrol, detect the player and switch behavior depending on the situation.",
+      // cover: "images/enemy-ai.png",
+      url: "https://www.youtube.com",
+      button: "Watch video",
       engine: "Unreal Engine 5.6",
       role: "Gameplay Programmer",
       year: "2026",
-      tags: ["Behavior Tree", "Perception", "States"],
-      details: [
-        "Explain which decisions the enemy makes and why.",
-        "Add how you debugged its behavior."
-      ],
-      links: [{ label: "Video", url: "https://www.youtube.com" }]
+      tags: ["Behavior Tree", "Perception", "States"]
     }
   ],
 

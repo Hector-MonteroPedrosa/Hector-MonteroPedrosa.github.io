@@ -130,13 +130,13 @@ section { padding-block: 48px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 22px; align-items: start; }
 .empty { margin: 0; font: 400 14px/1.5 var(--font-mono); color: var(--muted); }
 .node { background: var(--surface); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; box-shadow: 0 10px 24px -16px rgba(0, 0, 0, 0.5); }
-.node-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; color: #fff; background: var(--cat); }
+.node-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; color: var(--on-cat, #fff); background: var(--cat); }
 .node-h h3 { font-size: 1.45rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
 .node-h .cat { font: 500 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.92; white-space: nowrap; }
 .node[data-cat="ue"] { --cat: var(--c-ue); }
 .node[data-cat="unity"] { --cat: var(--c-sys); }
 .node[data-cat="other"] { --cat: var(--c-ai); }
-.thumb { display: block; width: 100%; aspect-ratio: 16 / 7; background: var(--bg); border-bottom: 1px solid var(--line); object-fit: cover; }
+.thumb { display: block; width: 100%; aspect-ratio: 16 / 9; background: var(--bg); border-bottom: 1px solid var(--line); object-fit: cover; }
 .tn { fill: var(--surface2); stroke: var(--line); stroke-width: 1; }
 .tw { fill: none; stroke: var(--cat); stroke-width: 2; opacity: 0.85; }
 .th { fill: var(--cat); }
@@ -150,12 +150,10 @@ section { padding-block: 48px; }
 .pins b { font-weight: 500; margin-left: auto; text-align: right; overflow-wrap: anywhere; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { font: 400 12px/1 var(--font-mono); padding: 6px 8px; border: 1px solid var(--line); color: var(--muted); }
-.more { margin-top: auto; font: 600 13px/1 var(--font-body); background: none; border: 0; border-top: 1px solid var(--line); padding: 14px; color: var(--ink); text-align: left; cursor: pointer; display: flex; justify-content: space-between; }
-.more:hover { background: var(--surface2); }
-.more::after { content: "+"; font-family: var(--font-mono); }
-.more[aria-expanded="true"]::after { content: "–"; }
-.detail { padding: 0 14px 16px; border-top: 1px dashed var(--line); }
-.detail ul { margin: 14px 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14.5px; }
+.cover { display: block; text-decoration: none; }
+.more { margin-top: auto; display: flex; justify-content: space-between; align-items: center; font: 600 14px/1 var(--font-body); text-decoration: none; padding: 15px 14px; background: var(--cat); color: var(--on-cat, #fff); }
+.more:hover { filter: brightness(1.12); }
+.more span { font-family: var(--font-mono); }
 .links { display: flex; flex-wrap: wrap; gap: 8px; }
 .links a { font: 500 13px/1 var(--font-mono); padding: 9px 12px; border: 1px solid var(--cat, var(--accent)); color: var(--ink); text-decoration: none; }
 .links a:hover { background: var(--cat, var(--accent)); color: #fff; }
@@ -339,8 +337,9 @@ function seeded(str) {
   return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 1000) / 1000; };
 }
 function thumb(p) {
-  if (p.image) return '<img class="thumb" src="' + esc(p.image) + '" alt="Screenshot of ' + esc(p.title) + '" loading="lazy">';
-  const r = seeded(p.id || p.title), W = 320, H = 140, n = 4, nodes = [];
+  const img = p.cover || p.image;
+  if (img) return '<img class="thumb" src="' + esc(img) + '" alt="Cover of ' + esc(p.title) + '" loading="lazy">';
+  const r = seeded(p.id || p.title), W = 320, H = 180, n = 4, nodes = [];
   for (let i = 0; i < n; i++) {
     const w = 62 + Math.round(r() * 18), h = 34 + Math.round(r() * 22);
     const x = 14 + i * ((W - 28 - 70) / (n - 1)), y = 14 + r() * (H - h - 28);
@@ -359,21 +358,34 @@ function thumb(p) {
   });
   return '<svg class="thumb" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Sketch of ' + esc(p.title) + '">' + wires + boxes + "</svg>";
 }
+/* Optional per-project color. Any valid CSS color works; the text color is chosen automatically for contrast. */
+let colorCtx = null;
+function cardColor(color) {
+  if (!color) return "";
+  try {
+    colorCtx = colorCtx || document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    colorCtx.canvas.width = colorCtx.canvas.height = 1;
+    colorCtx.fillStyle = "#010203"; colorCtx.fillStyle = String(color);
+    if (colorCtx.fillStyle === "#010203") return "";
+    colorCtx.fillRect(0, 0, 1, 1);
+    const d = colorCtx.getImageData(0, 0, 1, 1).data;
+    const lum = (0.2126 * d[0] + 0.7152 * d[1] + 0.0722 * d[2]) / 255;
+    return ' style="--cat:' + esc(color) + ";--on-cat:" + (lum > 0.6 ? "#0F2240" : "#fff") + '"';
+  } catch (e) { return ""; }
+}
 function pin(label, value) { return value ? "<li><span>" + label + "</span><b>" + esc(value) + "</b></li>" : ""; }
 function card(p, i) {
-  const id = "d-" + (p.id || i);
   const cat = CATS[p.cat] ? p.cat : "other";
-  const tags = p.tags || [], details = p.details || [], links = p.links || [];
-  return '<article class="node" data-cat="' + cat + '">' +
+  const tags = p.tags || [];
+  const href = p.url ? esc(p.url) : "";
+  return '<article class="node" data-cat="' + cat + '"' + cardColor(p.color) + ">" +
     '<div class="node-h"><h3>' + esc(p.title) + '</h3><span class="cat">' + esc(CATS[cat]) + "</span></div>" +
-    thumb(p) +
+    (href ? '<a class="cover" href="' + href + '" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">' + thumb(p) + "</a>" : thumb(p)) +
     '<div class="node-b"><p>' + esc(p.summary || "") + "</p>" +
     '<ul class="pins">' + pin("Engine", p.engine) + pin("Role", p.role) + pin("Year", p.year) + "</ul>" +
     '<div class="tags">' + tags.map(t => '<span class="tag">' + esc(t) + "</span>").join("") +
     (p.placeholder ? '<span class="badge" title="Replace this with your real project">Placeholder</span>' : "") + "</div></div>" +
-    '<button class="more" type="button" aria-expanded="false" aria-controls="' + id + '">Details</button>' +
-    '<div class="detail" id="' + id + '" hidden><ul>' + details.map(d => "<li>" + esc(d) + "</li>").join("") + "</ul>" +
-    '<div class="links">' + links.map(l => '<a href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">' + esc(l.label) + " ↗</a>").join("") + "</div></div>" +
+    (href ? '<a class="more" href="' + href + '" target="_blank" rel="noopener noreferrer">' + esc(p.button || "View game") + "<span>↗</span></a>" : "") +
     "</article>";
 }
 function renderProjects(list) {
@@ -388,12 +400,6 @@ function renderProjects(list) {
     const b = e.target.closest(".chip"); if (!b) return;
     filters.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === b));
     draw(b.dataset.f);
-  });
-  grid.addEventListener("click", e => {
-    const b = e.target.closest(".more"); if (!b) return;
-    const open = b.getAttribute("aria-expanded") === "true";
-    b.setAttribute("aria-expanded", String(!open));
-    document.getElementById(b.getAttribute("aria-controls")).hidden = open;
   });
 }
 if (window.SITE) {
