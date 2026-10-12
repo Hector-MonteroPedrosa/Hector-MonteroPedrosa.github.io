@@ -1,11 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Héctor Montero</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: blueprint-paper look. Hero with a big name and a playable character controller with a debug HUD;
-   projects as panels with a colored header per engine (Unreal, Unity, other). Projects live in projects.json. */
+   projects as panels with a colored header per engine (Unreal, Unity, other). Projects live in projects.js. */
 :root {
   --bg: #E8EEF7;
   --surface: #F5F8FD;
@@ -284,8 +283,9 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
   </div>
 </footer>
 
+<script src="projects.js"></script>
 <script>
-/* ===== Hero text. Projects, about, toolbox and contact live in projects.json ===== */
+/* ===== Hero text. Projects, about, toolbox and contact live in projects.js ===== */
 const CONFIG = {
   name: ["Héctor", "Montero"],
   tagline: "I turn design ideas into mechanics that feel good to play. I build gameplay in both Unreal Engine and Unity.",
@@ -332,7 +332,7 @@ $("#copy").addEventListener("click", async () => {
   setTimeout(() => { btn.textContent = "Copy"; }, 1800);
 });
 
-/* ===== projects (loaded from projects.json) ===== */
+/* ===== projects (from projects.js) ===== */
 function seeded(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -378,7 +378,7 @@ function card(p, i) {
 }
 function renderProjects(list) {
   const grid = $("#grid"), filters = $("#filters");
-  if (!list.length) { grid.innerHTML = '<p class="empty">No projects yet. Add them to projects.json.</p>'; return; }
+  if (!list.length) { grid.innerHTML = '<p class="empty">No projects yet. Add them to projects.js.</p>'; return; }
   const cats = [["all", "All"]];
   list.forEach(p => { const c = CATS[p.cat] ? p.cat : "other"; if (!cats.some(x => x[0] === c)) cats.push([c, CATS[c]]); });
   filters.innerHTML = cats.length > 2 ? cats.map((c, i) => '<button class="chip" type="button" data-f="' + c[0] + '" aria-pressed="' + (i === 0) + '">' + esc(c[1]) + "</button>").join("") : "";
@@ -396,10 +396,12 @@ function renderProjects(list) {
     document.getElementById(b.getAttribute("aria-controls")).hidden = open;
   });
 }
-fetch("projects.json", { cache: "no-store" })
-  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-  .then(d => { renderProjects(Array.isArray(d) ? d : (d.projects || [])); if (!Array.isArray(d)) renderBottom(d); })
-  .catch(() => { $("#grid").innerHTML = '<p class="empty">Could not load projects.json. Check that it sits next to this page and is valid JSON.</p>'; });
+if (window.SITE) {
+  renderProjects(window.SITE.projects || []);
+  renderBottom(window.SITE);
+} else {
+  $("#grid").innerHTML = '<p class="empty">Could not load projects.js. Check that it sits next to index.html and has no syntax errors (see the browser console).</p>';
+}
 
 /* ===== playable character controller ===== */
 (function playground() {
@@ -407,7 +409,7 @@ fetch("projects.json", { cache: "no-store" })
   const RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const H = () => cv.clientHeight;
   let W = 0, dpr = 1, plats = [], pal = null, frame = 0, running = false, inView = false, last = 0, hudT = 0;
-  let time = 0, freeze = 0, shake = 0, ghostT = 0, runDust = 0, focused = false;
+  let time = 0, freeze = 0, shake = 0, ghostT = 0, runDust = 0, focused = false, raf = 0;
 
   const C = { MAXV: 280, ACC: 1800, FRIC: 1500, GRAV: 1900, JUMP: 640, COYOTE: 0.1, BUFFER: 0.1, DASH_V: 560, DASH_T: 0.14, DASH_CD: 0.18 };
   const P = { x: 40, y: 0, w: 20, h: 28, vx: 0, vy: 0, grounded: false, coyote: 0, buffer: 0, dashBuf: 0, state: "IDLE", face: 1,
@@ -665,6 +667,7 @@ fetch("projects.json", { cache: "no-store" })
 
   /* ---- loop ---- */
   function loop(t) {
+    raf = 0;
     if (!running) return;
     const dt = Math.min(0.033, (t - last) / 1000 || 0.016); last = t;
     if (freeze > 0) freeze -= dt; else { step(dt); updateFx(dt); }
@@ -672,10 +675,10 @@ fetch("projects.json", { cache: "no-store" })
     if (++frame % 30 === 0) readPalette();
     draw();
     hudT += dt; if (hudT > 0.08) { hudT = 0; hud(); }
-    requestAnimationFrame(loop);
+    raf = requestAnimationFrame(loop);
   }
-  function start() { if (running) return; running = true; last = performance.now(); requestAnimationFrame(loop); }
-  function stop() { running = false; }
+  function start() { if (running) return; running = true; last = performance.now(); raf = requestAnimationFrame(loop); }
+  function stop() { running = false; if (raf) { cancelAnimationFrame(raf); raf = 0; } }
   new IntersectionObserver(es => { inView = es[0].isIntersecting; inView && !document.hidden ? start() : stop(); }, { threshold: 0.1 }).observe(cv);
   document.addEventListener("visibilitychange", () => { document.hidden ? stop() : (inView && start()); });
 
@@ -701,5 +704,3 @@ fetch("projects.json", { cache: "no-store" })
   resize(); readPalette(); hud();
 })();
 </script>
-
-</body></html>
