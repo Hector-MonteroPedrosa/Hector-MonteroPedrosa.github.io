@@ -162,14 +162,31 @@ section { padding-block: 48px; }
 .pins b { font-weight: 500; margin-left: auto; text-align: right; overflow-wrap: anywhere; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { font: 400 12px/1 var(--font-mono); padding: 6px 8px; border: 1px solid var(--line); color: var(--muted); }
-.cover { display: block; text-decoration: none; }
-.more { margin-top: auto; display: flex; justify-content: space-between; align-items: center; font: 600 14px/1 var(--font-body); text-decoration: none; padding: 15px 14px; background: var(--cat); color: var(--on-cat, #fff); }
+.cover { display: block; position: relative; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
+.cover:hover .thumb { filter: brightness(1.08); }
+.actions { margin-top: auto; display: flex; flex-wrap: wrap; }
+.more { flex: 1 1 130px; min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 600 14px/1.2 var(--font-body); text-align: left; text-decoration: none; padding: 15px 14px; background: var(--cat); color: var(--on-cat, #fff); border: 0; cursor: pointer; }
 .more:hover { filter: brightness(1.12); }
-.more span { font-family: var(--font-mono); }
+.more.alt { background: var(--surface2); color: var(--ink); border-top: 1px solid var(--line); }
+.more.alt:hover { filter: none; background: var(--line); }
+.more span { font-family: var(--font-mono); flex: none; }
 .links { display: flex; flex-wrap: wrap; gap: 8px; }
 .links a { font: 500 13px/1 var(--font-mono); padding: 9px 12px; border: 1px solid var(--cat, var(--accent)); color: var(--ink); text-decoration: none; }
 .links a:hover { background: var(--cat, var(--accent)); color: #fff; }
 .badge { font: 500 10px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 6px; border: 1px dashed currentColor; opacity: 0.85; }
+
+/* video player */
+dialog.vid { padding: 0; border: 0; background: transparent; width: min(960px, calc(100vw - 24px)); max-width: none; max-height: none; overflow: visible; }
+dialog.vid::backdrop { background: rgba(5, 12, 28, 0.85); }
+body:has(dialog.vid[open]) { overflow: hidden; }
+.vid-box { background: #0A1424; border: 1px solid var(--line); }
+.vid-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 14px; color: #E7F0FF; }
+.vid-title { font: 800 1.3rem/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.03em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vid-tools { display: flex; align-items: center; gap: 8px; flex: none; }
+.vid-tools a, .vid-tools button { font: 500 13px/1 var(--font-mono); color: #E7F0FF; background: transparent; border: 1px solid rgba(231, 240, 255, 0.35); padding: 9px 12px; text-decoration: none; cursor: pointer; }
+.vid-tools a:hover, .vid-tools button:hover { background: rgba(231, 240, 255, 0.14); }
+.vid-frame { aspect-ratio: 16 / 9; max-height: calc(100vh - 90px); background: #000; }
+.vid-frame iframe, .vid-frame video { display: block; width: 100%; height: 100%; border: 0; background: #000; }
 
 /* about + skills */
 .two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 36px; }
@@ -293,6 +310,19 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
   </div>
 </footer>
 
+<dialog class="vid" id="vid" aria-labelledby="vid-title">
+  <div class="vid-box">
+    <div class="vid-bar">
+      <span class="vid-title" id="vid-title"></span>
+      <div class="vid-tools">
+        <a id="vid-ext" href="#" target="_blank" rel="noopener noreferrer" hidden>Open ↗</a>
+        <button id="vid-close" type="button" aria-label="Close video">Close ✕</button>
+      </div>
+    </div>
+    <div class="vid-frame" id="vid-frame"></div>
+  </div>
+</dialog>
+
 <script src="projects.js"></script>
 <script>
 /* ===== Hero text. Projects, about, toolbox and contact live in projects.js ===== */
@@ -348,8 +378,8 @@ function seeded(str) {
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
   return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 1000) / 1000; };
 }
-function thumb(p) {
-  const img = p.cover || p.image;
+function thumb(p, v) {
+  const img = p.cover || p.image || (v && v.type === "youtube" ? "https://i.ytimg.com/vi/" + v.id + "/hqdefault.jpg" : "");
   if (img) return '<img class="thumb" src="' + esc(img) + '" alt="Cover of ' + esc(p.title) + '" loading="lazy">';
   const r = seeded(p.id || p.title), W = 320, H = 180, n = 4, nodes = [];
   for (let i = 0; i < n; i++) {
@@ -385,24 +415,66 @@ function cardColor(color) {
     return ' style="--cat:' + esc(color) + ";--on-cat:" + (lum > 0.6 ? "#0F2240" : "#fff") + '"';
   } catch (e) { return ""; }
 }
+/* ===== video player: opens in a dialog, loads only when clicked ===== */
+/* video: a YouTube or Vimeo link, or a file path like "src/trailer.mp4" (mp4, webm, ogv). */
+function parseVideo(v) {
+  const s = String(v || "").trim();
+  if (!s) return null;
+  let m = s.match(/(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/) || s.match(/^([\w-]{11})$/);
+  if (m) return { type: "youtube", id: m[1], page: "https://www.youtube.com/watch?v=" + m[1], label: "YouTube" };
+  m = s.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/(\w+))?/);
+  if (m) return { type: "vimeo", id: m[1], hash: m[2] || "", page: "https://vimeo.com/" + m[1] + (m[2] ? "/" + m[2] : ""), label: "Vimeo" };
+  if (/\.(mp4|webm|ogv)(\?.*)?$/i.test(s)) return { type: "file", src: s };
+  return null;
+}
+function openVideo(p, v) {
+  const vid = $("#vid"), frame = $("#vid-frame"), ext = $("#vid-ext");
+  if (typeof vid.showModal !== "function") { window.open(v.page || v.src, "_blank", "noopener"); return; }
+  const t = esc(p.title) + " video";
+  if (v.type === "youtube") frame.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + v.id + '?autoplay=1&rel=0&playsinline=1" title="' + t + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+  else if (v.type === "vimeo") frame.innerHTML = '<iframe src="https://player.vimeo.com/video/' + v.id + "?autoplay=1" + (v.hash ? "&h=" + v.hash : "") + '" title="' + t + '" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+  else frame.innerHTML = '<video src="' + esc(v.src) + '" controls autoplay playsinline preload="metadata"></video>';
+  $("#vid-title").textContent = p.title;
+  if (v.page) { ext.href = v.page; ext.textContent = v.label + " ↗"; ext.hidden = false; } else { ext.hidden = true; }
+  vid.showModal();
+}
+(function videoDialog() {
+  const vid = $("#vid");
+  const close = () => { if (vid.open) vid.close(); };
+  vid.addEventListener("close", () => { $("#vid-frame").innerHTML = ""; });
+  vid.addEventListener("click", e => { if (e.target === vid) close(); });
+  $("#vid-close").addEventListener("click", close);
+})();
+
 function pin(label, value) { return value ? "<li><span>" + label + "</span><b>" + esc(value) + "</b></li>" : ""; }
-function card(p, i) {
+function card(p) {
   const cat = CATS[p.cat] ? p.cat : "other";
   const tags = p.tags || [];
   const href = p.url ? esc(p.url) : "";
+  const v = p.video ? parseVideo(p.video) : null;
+  const vlink = p.video && !v ? esc(p.video) : "";
+  const picture = thumb(p, v);
+  const top = v ? '<button class="cover" type="button" data-video="' + p.__i + '" tabindex="-1" aria-hidden="true">' + picture + "</button>"
+    : href ? '<a class="cover" href="' + href + '" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">' + picture + "</a>"
+    : picture;
+  const wlabel = esc(p.videoButton || "Watch video");
+  const watch = v ? '<button class="more" type="button" data-video="' + p.__i + '">' + wlabel + "<span>▶</span></button>"
+    : vlink ? '<a class="more" href="' + vlink + '" target="_blank" rel="noopener noreferrer">' + wlabel + "<span>▶</span></a>" : "";
+  const view = href ? '<a class="more' + (watch ? " alt" : "") + '" href="' + href + '" target="_blank" rel="noopener noreferrer">' + esc(p.button || "View game") + "<span>↗</span></a>" : "";
   return '<article class="node" data-cat="' + cat + '"' + cardColor(p.color) + ">" +
     '<div class="node-h"><h3>' + esc(p.title) + '</h3><span class="cat">' + esc(CATS[cat]) + "</span></div>" +
-    (href ? '<a class="cover" href="' + href + '" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">' + thumb(p) + "</a>" : thumb(p)) +
+    top +
     '<div class="node-b"><p>' + esc(p.summary || "") + "</p>" +
     '<ul class="pins">' + pin("Engine", p.engine) + pin("Role", p.role) + pin("Year", p.year) + "</ul>" +
     '<div class="tags">' + tags.map(t => '<span class="tag">' + esc(t) + "</span>").join("") +
     (p.placeholder ? '<span class="badge" title="Replace this with your real project">Placeholder</span>' : "") + "</div></div>" +
-    (href ? '<a class="more" href="' + href + '" target="_blank" rel="noopener noreferrer">' + esc(p.button || "View game") + "<span>↗</span></a>" : "") +
+    (watch || view ? '<div class="actions">' + watch + view + "</div>" : "") +
     "</article>";
 }
 function renderProjects(list) {
   const grid = $("#grid"), filters = $("#filters");
   if (!list.length) { grid.innerHTML = '<p class="empty">No projects yet. Add them to projects.js.</p>'; return; }
+  list.forEach((p, i) => { p.__i = i; });
   const cats = [["all", "All"]];
   list.forEach(p => { const c = CATS[p.cat] ? p.cat : "other"; if (!cats.some(x => x[0] === c)) cats.push([c, CATS[c]]); });
   filters.innerHTML = cats.length > 2 ? cats.map((c, i) => '<button class="chip" type="button" data-f="' + c[0] + '" aria-pressed="' + (i === 0) + '">' + esc(c[1]) + "</button>").join("") : "";
@@ -412,6 +484,11 @@ function renderProjects(list) {
     const b = e.target.closest(".chip"); if (!b) return;
     filters.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === b));
     draw(b.dataset.f);
+  });
+  grid.addEventListener("click", e => {
+    const b = e.target.closest("[data-video]"); if (!b) return;
+    const p = list[+b.dataset.video], v = p && parseVideo(p.video);
+    if (v) openVideo(p, v);
   });
 }
 if (window.SITE) {
